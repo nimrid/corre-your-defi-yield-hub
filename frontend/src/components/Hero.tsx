@@ -1,8 +1,18 @@
 import { Button } from "@/components/ui/button";
 import { ArrowRight, TrendingUp } from "lucide-react";
-import { Link } from "react-router-dom";
+import { usePrivy } from "@privy-io/react-auth";
+import { useNavigate } from "react-router-dom";
+import { useEffect } from "react";
 
 const Hero = () => {
+  const { ready, authenticated, login } = usePrivy();
+  const navigate = useNavigate();
+    useEffect(() => {
+    if (ready && authenticated) {
+      navigate("/home");
+    }
+  }, [ready, authenticated, navigate]);
+
   return (
     <section className="relative min-h-[90vh] flex items-center justify-center overflow-hidden px-4 py-20">
       {/* Background effects */}
@@ -27,12 +37,14 @@ const Hero = () => {
         </p>
         
         <div className="flex flex-col sm:flex-row gap-4 justify-center items-center animate-fade-in" style={{ animationDelay: '0.3s' }}>
-          <Link to="/auth">
-            <Button size="lg" className="group bg-gradient-to-r from-primary to-accent hover:opacity-90 transition-all glow-effect">
-              Get Started
-              <ArrowRight className="ml-2 w-4 h-4 group-hover:translate-x-1 transition-transform" />
-            </Button>
-          </Link>
+          <Button
+            onClick={() => login()}
+            size="lg"
+            className="group bg-gradient-to-r from-primary to-accent hover:opacity-90 transition-all glow-effect"
+          >
+            Get Started
+            <ArrowRight className="ml-2 w-4 h-4 group-hover:translate-x-1 transition-transform" />
+          </Button>
           <Button size="lg" variant="outline" className="border-border/50 hover:bg-secondary/50">
             Learn More
           </Button>
@@ -59,3 +71,4 @@ const Hero = () => {
 };
 
 export default Hero;
+

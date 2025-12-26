@@ -2,8 +2,20 @@ import Navigation from "@/components/Navigation";
 import Hero from "@/components/Hero";
 import Features from "@/components/Features";
 import Footer from "@/components/Footer";
+import { usePrivy } from "@privy-io/react-auth";
+import { useNavigate } from "react-router-dom";
+import { useEffect } from "react";
 
 const Index = () => {
+  const { ready, authenticated } = usePrivy();
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    if (ready && authenticated) {
+      navigate("/home");
+    }
+  }, [ready, authenticated, navigate]);
+
   return (
     <div className="min-h-screen">
       <Navigation />
