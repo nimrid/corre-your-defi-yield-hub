@@ -1,6 +1,6 @@
 import express from "express";
 import cors from "cors";
-import { pool } from "./db";
+import { pool } from "./db.js";
 import type { UserInput, WalletInput } from "./models/user";
 import type { TransactionInput } from "./models/transaction";
 
