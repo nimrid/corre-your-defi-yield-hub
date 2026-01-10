@@ -8,6 +8,10 @@ import { useNavigate } from "react-router-dom";
 import { usePrivy } from "@privy-io/react-auth";
 import { useSignAndSendTransaction, useWallets as useSolanaWallets } from "@privy-io/react-auth/solana";
 
+const API_BASE_URL =
+  import.meta.env.VITE_BACKEND_URL ||
+  "http://localhost:4000";
+
 const USDC_MINT = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
 const LULO_REFERRER = "6pZiqTT81nKLxMvQay7P6TrRx9NdWG5zbakaZdQoWoUb";
 
@@ -98,7 +102,7 @@ const SaveRegular = () => {
         setPendingError(null);
 
         const res = await fetch(
-          `http://localhost:4000/withdrawals/pending?privyUserId=${encodeURIComponent(
+          `${API_BASE_URL}/withdrawals/pending?privyUserId=${encodeURIComponent(
             user.id,
           )}`,
         );
@@ -195,7 +199,7 @@ const SaveRegular = () => {
 
       const privyUserId = user?.id;
       if (privyUserId && signature) {
-        void fetch("http://localhost:4000/transactions", {
+        void fetch(`${API_BASE_URL}/transactions`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -300,7 +304,7 @@ const SaveRegular = () => {
           : "Withdraw transaction submitted.",
       );
 
-      await fetch("http://localhost:4000/withdrawals/complete", {
+      await fetch(`${API_BASE_URL}/withdrawals/complete`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -308,7 +312,7 @@ const SaveRegular = () => {
         body: JSON.stringify({ privyUserId, withdrawalId: pendingWithdrawal.withdrawalId }),
       }).catch(() => {});
 
-      await fetch("http://localhost:4000/transactions", {
+      await fetch(`${API_BASE_URL}/transactions`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -430,7 +434,7 @@ const SaveRegular = () => {
         throw new Error("User not found when recording pending withdrawal.");
       }
 
-      await fetch("http://localhost:4000/withdrawals/pending", {
+      await fetch(`${API_BASE_URL}/withdrawals/pending`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

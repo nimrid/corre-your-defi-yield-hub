@@ -9,6 +9,10 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
 
+const API_BASE_URL =
+  import.meta.env.VITE_BACKEND_URL ||
+  "http://localhost:4000";
+
 interface TokenStatsWindow {
   priceChange?: number | null;
   buyVolume?: number | null;
@@ -646,7 +650,7 @@ const InvestStockDetails = () => {
                         (execData as any)?.txid ??
                         null;
 
-                      void fetch("http://localhost:4000/transactions", {
+                      void fetch(`${API_BASE_URL}/transactions`, {
                         method: "POST",
                         headers: {
                           "Content-Type": "application/json",

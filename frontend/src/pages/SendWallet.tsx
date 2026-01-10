@@ -19,6 +19,10 @@ import {
   useWallets as useSolanaWallets,
 } from "@privy-io/react-auth/solana";
 
+const API_BASE_URL =
+  import.meta.env.VITE_BACKEND_URL ||
+  "http://localhost:4000";
+
 const USDC_MINT = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"; // Solana USDC
 
 const SendWallet = () => {
@@ -119,7 +123,7 @@ const SendWallet = () => {
       // If the user is not available, we skip recording rather than blocking the UI.
       const privyUserId = user?.id;
       if (privyUserId) {
-        void fetch("http://localhost:4000/transactions", {
+        void fetch(`${API_BASE_URL}/transactions`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",

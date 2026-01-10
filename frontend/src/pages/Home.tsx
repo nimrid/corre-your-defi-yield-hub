@@ -4,6 +4,10 @@ import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Copy } from "lucide-react";
 
+const API_BASE_URL =
+  import.meta.env.VITE_BACKEND_URL ||
+  "http://localhost:4000";
+
 interface TransactionRow {
   id: number;
   chainType: string;
@@ -79,7 +83,7 @@ const Home = () => {
           wallets: [...linkedSolana, ...linkedEthereum],
         };
 
-        await fetch("http://localhost:4000/users/upsert", {
+        await fetch(`${API_BASE_URL}/users/upsert`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -104,7 +108,7 @@ const Home = () => {
         setTxLoading(true);
         setTxError(null);
 
-        const res = await fetch(`http://localhost:4000/transactions/${user.id}`);
+        const res = await fetch(`${API_BASE_URL}/transactions/${user.id}`);
         if (!res.ok) {
           throw new Error("Failed to fetch transactions");
         }
