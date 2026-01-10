@@ -8,6 +8,12 @@ import NotFound from "./pages/NotFound";
 import Home from "./pages/Home";
 import Send from "./pages/Send";
 import SendWallet from "./pages/SendWallet";
+import Save from "./pages/Save";
+import SaveRegular from "./pages/SaveRegular";
+import SaveProtected from "./pages/SaveProtected";
+import Invest from "./pages/Invest";
+import InvestUSStocks from "./pages/InvestUSStocks";
+import InvestStockDetails from "./pages/InvestStockDetails";
 import { usePrivy } from "@privy-io/react-auth";
 
 const queryClient = new QueryClient();
@@ -28,6 +34,12 @@ const App = () => {
             <Route path="/home" element={<Home />} />
             <Route path="/send" element={<Send />} />
             <Route path="/send/wallet" element={<SendWallet />} />
+            <Route path="/save" element={<Save />} />
+            <Route path="/save/regular" element={<SaveRegular />} />
+            <Route path="/save/protected" element={<SaveProtected />} />
+            <Route path="/invest" element={<Invest />} />
+            <Route path="/invest/us-stocks" element={<InvestUSStocks />} />
+            <Route path="/invest/us-stocks/:mint" element={<InvestStockDetails />} />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
           </Routes>

@@ -1,0 +1,188 @@
+import Navigation from "@/components/Navigation";
+import { ArrowLeft } from "lucide-react";
+import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
+
+interface TokenItem {
+  id: string;
+  address: string;
+  name: string;
+  symbol: string;
+  icon: string | null;
+  usdPrice: number | null;
+}
+
+// List of US tokenized stock mints we want to display
+const US_STOCK_MINTS: string[] = [
+  "XsueG8BtpquVJX9LVLLEGuViXUungE6WmK5YZ3p3bd1", // CRCLx
+  "XsDoVfqeBukxuZHWhdvWHBhgEHjGNst4MLodqsJHzoB", // Tesla
+  "XsP7xzNPvEHS1m6qfanPUGjNmdnmsLKEoNAnHjdxxyZ", // MSTRx
+  "XsoCS1TfEyfFhfvj8EtZ528L3CaKBDBRqRapnBbDF2W", // SP500
+  "Xsc9qvGR1efVDFGLrVsmkzv3qi45LTBjeUKSPmx9qEh", // Nvidia
+  "XsCPL9dNWBMvFtTmwcCA5v3xWPSMEBCszbQdiLLq6aN", // Google
+  "XsbEhLAtcf6HdfpFZ5xEMdqW8nfAvcsP5bdudRLJzJp", // Apple
+  "Xs8S1uUs1zvS2p7iwtsG3b6fkhpvmwz4GYU3gWAmWHZ", // Nasdaq
+  "XsvNBAYkrDRNhA7wPHQfX3ZUXZyZLdnCQDfHZ56bzpg", // Robinhood
+  "Xs3eBt7uRfJX8QUs4suhyU8p2M6DoUDrJyWBa8LLZsg", // Amazon
+  "Xs7ZdzSHLU9ftNJsii5fCeJhoRWSC32SQGzGQtePxNu", // Coinbase
+  "Xsa62P5mvPszXL1krVUnU5ar38bBSVcWAB6fmPCo5Zu", // Meta
+  "XsaQTCgebC2KPbf27KUhdv5JFvHhQ4GDAPURwrEhAzb", // AMBR
+  "XsqE9cRRpzxcGKDXj1BJ7Xmg4GRhZoyY1KpmGSxAWT2", // McDonald's
+  "Xs151QeqTCiuKtinzfRATnUESM2xTU6V9Wy8Vy538ci", // WalmartX
+  "Xs6B6zawENwAbWVi7w92rjazLuAr5Az59qgWKcNb45x", // Berkshire
+  "Xs8drBWy3Sd5QY3aifG9kt9KFs2K3PGZmx7jWrsrk57", // Thermo Fisher
+  "XsaBXg8dU5cPM6ehmVctMkVqoiRG2ZjMo1cyBJ3AykQ", // Coca-Cola
+  "XsYdjDjNUygZ7yGKfQaB6TxLh2gC6RRjzLtLAGJrhzV", // Procter & Gamble
+  "XsjFwUPiLofddX5cWFHW35GCbXcSu1BCUGfxoQAQjeL", // Oracle
+  "Xs3ZFkPYT2BN7qBMqf1j1bfTeTm1rFzEFSsQ1z3wAKU", // (unspecified)
+  "Xsv9hRk1z5ystj9MhnA7Lq4vjSsLwzL2nxrwmwtD3re", // Gold
+  "XszvaiXGPwvk2nwb3o9C1CX4K6zH8sez11E6uyup6fe", // UnitedHealth
+];
+
+const JUP_TOKENS_URL = (() => {
+  const base = "https://api.jup.ag/tokens/v2/search";
+  const query = US_STOCK_MINTS.join(", ");
+  const params = new URLSearchParams({ query });
+  return `${base}?${params.toString()}`;
+})();
+
+const InvestUSStocks = () => {
+  const navigate = useNavigate();
+  const [tokens, setTokens] = useState<TokenItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const apiKey = import.meta.env.VITE_JUP_API_KEY as string | undefined;
+
+    if (!apiKey) {
+      setError("Jupiter API key is not configured (VITE_JUP_API_KEY)");
+      setLoading(false);
+      return;
+    }
+
+    const fetchTokens = async () => {
+      try {
+        setLoading(true);
+        setError(null);
+
+        const res = await fetch(JUP_TOKENS_URL, {
+          method: "GET",
+          headers: {
+            "x-api-key": apiKey,
+          },
+        });
+
+        if (!res.ok) {
+          throw new Error(`Failed to fetch tokens: ${res.status}`);
+        }
+
+        const data: any = await res.json();
+        const items: TokenItem[] = Array.isArray(data)
+          ? data.map((t: any) => ({
+              id: t.id ?? t.address, // mint identifier
+              address: t.address,
+              name: t.name,
+              symbol: t.symbol,
+              icon: t.icon ?? null,
+              usdPrice: typeof t.usdPrice === "number" ? t.usdPrice : null,
+            }))
+          : [];
+
+        setTokens(items);
+      } catch (err: any) {
+        setError(err?.message ?? "Failed to load US tokenized stocks");
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    void fetchTokens();
+  }, []);
+
+  const formatPrice = (price: number | null) => {
+    if (price == null || Number.isNaN(price)) return "-";
+    return `$${price.toLocaleString(undefined, {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    })}`;
+  };
+
+  return (
+    <div className="min-h-screen bg-background text-foreground">
+      <Navigation />
+      <main className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-24 space-y-8">
+        <button
+          type="button"
+          onClick={() => navigate("/invest")}
+          className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors"
+        >
+          <ArrowLeft className="w-4 h-4" />
+          <span>Back to Invest</span>
+        </button>
+
+        <div className="glass-card p-6 sm:p-8 rounded-2xl space-y-6">
+          <div className="space-y-2">
+            <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">
+              US stocks
+            </h1>
+            <p className="text-sm text-muted-foreground">
+              Browse tokenized US stocks available on Solana.
+            </p>
+          </div>
+
+          {loading && (
+            <p className="text-sm text-muted-foreground">Loading US stocks...</p>
+          )}
+
+          {error && !loading && (
+            <p className="text-sm text-red-500 break-words">{error}</p>
+          )}
+
+          {!loading && !error && (
+            <div className="space-y-3">
+              {tokens.length === 0 ? (
+                <p className="text-sm text-muted-foreground">
+                  No US tokenized stocks returned from Jupiter.
+                </p>
+              ) : (
+                <ul className="space-y-3">
+                  {tokens.map((token) => (
+                    <li
+                      key={token.id}
+                      className="flex items-center gap-3 rounded-xl bg-secondary/40 border border-border/60 px-3 py-3 sm:px-4 sm:py-3 cursor-pointer hover:bg-secondary/60 transition-colors"
+                      onClick={() => navigate(`/invest/us-stocks/${token.id}`)}
+                    >
+                      <div className="flex-shrink-0 w-10 h-10 rounded-full overflow-hidden bg-muted flex items-center justify-center text-xs font-semibold">
+                        {token.icon ? (
+                          <img
+                            src={token.icon}
+                            alt={token.symbol}
+                            className="w-full h-full object-cover"
+                          />
+                        ) : (
+                          <span>{token.symbol.slice(0, 3).toUpperCase()}</span>
+                        )}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium truncate">{token.name}</p>
+                        <p className="text-xs text-muted-foreground uppercase tracking-wide">
+                          {token.symbol}
+                        </p>
+                      </div>
+                      <div className="text-right text-sm font-semibold whitespace-nowrap">
+                        {formatPrice(token.usdPrice)}
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          )}
+        </div>
+      </main>
+    </div>
+  );
+};
+
+export default InvestUSStocks;

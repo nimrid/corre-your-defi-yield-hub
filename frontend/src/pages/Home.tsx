@@ -290,10 +290,18 @@ const Home = () => {
           >
             Send
           </button>
-          <button className="flex-1 text-sm sm:text-base font-medium px-3 py-2 rounded-full hover:bg-secondary transition-colors" type="button">
+          <button
+            className="flex-1 text-sm sm:text-base font-medium px-3 py-2 rounded-full hover:bg-secondary transition-colors"
+            type="button"
+            onClick={() => navigate("/save")}
+          >
             Save
           </button>
-          <button className="flex-1 text-sm sm:text-base font-medium px-3 py-2 rounded-full hover:bg-secondary transition-colors" type="button">
+          <button
+            className="flex-1 text-sm sm:text-base font-medium px-3 py-2 rounded-full hover:bg-secondary transition-colors"
+            type="button"
+            onClick={() => navigate("/invest")}
+          >
             Invest
           </button>
         </div>
