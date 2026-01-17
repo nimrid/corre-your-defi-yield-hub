@@ -7,7 +7,7 @@ const Footer = () => {
         <div className="grid md:grid-cols-4 gap-8 mb-8">
           <div className="space-y-4">
             <div className="flex items-center space-x-2">
-              <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-primary to-accent" />
+              <img src="/corre_logoo.png" alt="Corre" className="w-8 h-8" />
               <span className="text-xl font-bold">Corre</span>
             </div>
             <p className="text-sm text-muted-foreground">
@@ -45,16 +45,16 @@ const Footer = () => {
         
         <div className="pt-8 border-t border-border/50 flex flex-col md:flex-row justify-between items-center gap-4">
           <p className="text-sm text-muted-foreground">
-            © 2025 Corre. All rights reserved.
+            © 2026 Corre. All rights reserved.
           </p>
           <div className="flex gap-4">
-            <a href="#" className="text-muted-foreground hover:text-foreground transition-colors">
+            <a href="https://x.com/corre_hq" className="text-muted-foreground hover:text-foreground transition-colors">
               <Twitter className="w-5 h-5" />
             </a>
             <a href="#" className="text-muted-foreground hover:text-foreground transition-colors">
               <Github className="w-5 h-5" />
             </a>
-            <a href="#" className="text-muted-foreground hover:text-foreground transition-colors">
+            <a href="https://t.me/+_ExsYWddoeNmZTA0" className="text-muted-foreground hover:text-foreground transition-colors">
               <MessageCircle className="w-5 h-5" />
             </a>
           </div>

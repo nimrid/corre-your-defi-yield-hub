@@ -216,6 +216,22 @@ const SaveRegular = () => {
             source: "save_regular_deposit",
           }),
         }).catch(() => {});
+
+        void fetch(`${API_BASE_URL}/savings`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            privyUserId,
+            vaultType: "regular",
+            direction: "deposit",
+            usdcAmount: amount,
+            walletAddress: owner,
+            txSignature: signature,
+            source: "save_regular_deposit",
+          }),
+        }).catch(() => {});
       }
     } catch (err: any) {
       setError(err?.message ?? "Failed to deposit into vault.");
@@ -326,6 +342,22 @@ const SaveRegular = () => {
           txSignature: signature,
           fromAddress: "lulo_vault_regular",
           toAddress: owner,
+          source: "save_regular_withdraw",
+        }),
+      }).catch(() => {});
+
+      void fetch(`${API_BASE_URL}/savings`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          privyUserId,
+          vaultType: "regular",
+          direction: "withdrawal",
+          usdcAmount: amount,
+          walletAddress: owner,
+          txSignature: signature,
           source: "save_regular_withdraw",
         }),
       }).catch(() => {});

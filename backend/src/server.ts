@@ -28,6 +28,54 @@ app.use(express.json());
         UNIQUE (privy_user_id, withdrawal_id)
       )`,
     );
+
+    await pool.query(
+      `CREATE TABLE IF NOT EXISTS stock_purchases (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        stock_mint TEXT NOT NULL,
+        stock_symbol TEXT,
+        stock_name TEXT,
+        usdc_amount TEXT NOT NULL,
+        shares_amount TEXT,
+        wallet_address TEXT,
+        tx_signature TEXT,
+        jupiter_request_id TEXT,
+        source TEXT,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )`,
+    );
+
+    await pool.query(
+      `CREATE TABLE IF NOT EXISTS savings_activity (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        vault_type TEXT NOT NULL, -- 'regular' or 'protected'
+        direction TEXT NOT NULL, -- 'deposit' or 'withdrawal'
+        usdc_amount TEXT NOT NULL,
+        wallet_address TEXT,
+        tx_signature TEXT,
+        source TEXT,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )`,
+    );
+
+    await pool.query(
+      `CREATE TABLE IF NOT EXISTS stock_sales (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        stock_mint TEXT NOT NULL,
+        stock_symbol TEXT,
+        stock_name TEXT,
+        usdc_amount TEXT NOT NULL,
+        shares_amount TEXT,
+        wallet_address TEXT,
+        tx_signature TEXT,
+        jupiter_request_id TEXT,
+        source TEXT,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )`,
+    );
   } catch (err) {
     console.error("Error ensuring pending_withdrawals table", err);
   }
@@ -45,6 +93,224 @@ app.get("/users", async (_req, res) => {
   } catch (err) {
     console.error("Error querying users", err);
     res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// Fetch stock buy + sell history for a user
+app.get("/stock-history/:privyUserId", async (req, res) => {
+  const { privyUserId } = req.params;
+
+  if (!privyUserId) {
+    return res.status(400).json({ error: "privyUserId is required" });
+  }
+
+  try {
+    const client = await pool.connect();
+
+    try {
+      const purchases = await client.query(
+        `SELECT sp.id,
+                sp.stock_mint AS "stockMint",
+                sp.stock_symbol AS "stockSymbol",
+                sp.stock_name AS "stockName",
+                sp.usdc_amount AS "usdcAmount",
+                sp.shares_amount AS "sharesAmount",
+                sp.wallet_address AS "walletAddress",
+                sp.tx_signature AS "txSignature",
+                sp.jupiter_request_id AS "jupiterRequestId",
+                sp.source,
+                sp.created_at AS "createdAt",
+                'buy' AS side
+           FROM stock_purchases sp
+           JOIN users u ON u.id = sp.user_id
+          WHERE u.privy_user_id = $1
+          ORDER BY sp.created_at DESC
+          LIMIT 100`,
+        [privyUserId],
+      );
+
+      const sales = await client.query(
+        `SELECT ss.id,
+                ss.stock_mint AS "stockMint",
+                ss.stock_symbol AS "stockSymbol",
+                ss.stock_name AS "stockName",
+                ss.usdc_amount AS "usdcAmount",
+                ss.shares_amount AS "sharesAmount",
+                ss.wallet_address AS "walletAddress",
+                ss.tx_signature AS "txSignature",
+                ss.jupiter_request_id AS "jupiterRequestId",
+                ss.source,
+                ss.created_at AS "createdAt",
+                'sell' AS side
+           FROM stock_sales ss
+           JOIN users u ON u.id = ss.user_id
+          WHERE u.privy_user_id = $1
+          ORDER BY ss.created_at DESC
+          LIMIT 100`,
+        [privyUserId],
+      );
+
+      const combined = [...purchases.rows, ...sales.rows].sort(
+        (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+      );
+
+      return res.json(combined);
+    } finally {
+      client.release();
+    }
+  } catch (err) {
+    console.error("Error querying stock history", err);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// Record a stock purchase (US stock bought via Jupiter)
+app.post("/stock-purchases", async (req, res) => {
+  const body = req.body as {
+    privyUserId?: string;
+    stockMint?: string;
+    stockSymbol?: string;
+    stockName?: string;
+    usdcAmount?: string;
+    sharesAmount?: string;
+    walletAddress?: string | null;
+    txSignature?: string | null;
+    jupiterRequestId?: string | null;
+    source?: string | null;
+  };
+
+  if (!body?.privyUserId) {
+    return res.status(400).json({ error: "privyUserId is required" });
+  }
+
+  if (!body.stockMint || !body.usdcAmount) {
+    return res.status(400).json({ error: "stockMint and usdcAmount are required" });
+  }
+
+  try {
+    const client = await pool.connect();
+
+    try {
+      await client.query("BEGIN");
+
+      const userResult = await client.query(
+        "SELECT id FROM users WHERE privy_user_id = $1",
+        [body.privyUserId],
+      );
+
+      if (!userResult.rows.length) {
+        await client.query("ROLLBACK");
+        return res.status(400).json({ error: "User not found for provided privyUserId" });
+      }
+
+      const userId: number = userResult.rows[0].id;
+
+      await client.query(
+        `INSERT INTO stock_purchases
+         (user_id, stock_mint, stock_symbol, stock_name, usdc_amount, shares_amount, wallet_address, tx_signature, jupiter_request_id, source)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+        [
+          userId,
+          body.stockMint,
+          body.stockSymbol ?? null,
+          body.stockName ?? null,
+          body.usdcAmount,
+          body.sharesAmount ?? null,
+          body.walletAddress ?? null,
+          body.txSignature ?? null,
+          body.jupiterRequestId ?? null,
+          body.source ?? "invest_buy",
+        ],
+      );
+
+      await client.query("COMMIT");
+
+      return res.json({ success: true });
+    } catch (err) {
+      await client.query("ROLLBACK");
+      console.error("Error inserting stock purchase", err);
+      return res.status(500).json({ error: "Internal server error" });
+    } finally {
+      client.release();
+    }
+  } catch (err) {
+    console.error("DB connection error when inserting stock purchase", err);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// Record a stock sale (US stock sold via Jupiter)
+app.post("/stock-sales", async (req, res) => {
+  const body = req.body as {
+    privyUserId?: string;
+    stockMint?: string;
+    stockSymbol?: string;
+    stockName?: string;
+    usdcAmount?: string;
+    sharesAmount?: string;
+    walletAddress?: string | null;
+    txSignature?: string | null;
+    jupiterRequestId?: string | null;
+    source?: string | null;
+  };
+
+  if (!body?.privyUserId) {
+    return res.status(400).json({ error: "privyUserId is required" });
+  }
+
+  if (!body.stockMint || !body.usdcAmount) {
+    return res.status(400).json({ error: "stockMint and usdcAmount are required" });
+  }
+
+  try {
+    const client = await pool.connect();
+
+    try {
+      await client.query("BEGIN");
+
+      const userResult = await client.query(
+        "SELECT id FROM users WHERE privy_user_id = $1",
+        [body.privyUserId],
+      );
+
+      if (!userResult.rows.length) {
+        await client.query("ROLLBACK");
+        return res.status(400).json({ error: "User not found for provided privyUserId" });
+      }
+
+      const userId: number = userResult.rows[0].id;
+
+      await client.query(
+        `INSERT INTO stock_sales
+         (user_id, stock_mint, stock_symbol, stock_name, usdc_amount, shares_amount, wallet_address, tx_signature, jupiter_request_id, source)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+        [
+          userId,
+          body.stockMint,
+          body.stockSymbol ?? null,
+          body.stockName ?? null,
+          body.usdcAmount,
+          body.sharesAmount ?? null,
+          body.walletAddress ?? null,
+          body.txSignature ?? null,
+          body.jupiterRequestId ?? null,
+          body.source ?? "invest_sell",
+        ],
+      );
+
+      await client.query("COMMIT");
+
+      return res.json({ success: true });
+    } catch (err) {
+      await client.query("ROLLBACK");
+      console.error("Error inserting stock sale", err);
+      return res.status(500).json({ error: "Internal server error" });
+    } finally {
+      client.release();
+    }
+  } catch (err) {
+    console.error("DB connection error when inserting stock sale", err);
+    return res.status(500).json({ error: "Internal server error" });
   }
 });
 

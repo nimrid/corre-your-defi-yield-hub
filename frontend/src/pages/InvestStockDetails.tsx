@@ -4,7 +4,10 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { usePrivy } from "@privy-io/react-auth";
-import { useWallets as useSolanaWallets } from "@privy-io/react-auth/solana";
+import {
+  useWallets as useSolanaWallets,
+  useSignTransaction,
+} from "@privy-io/react-auth/solana";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
@@ -28,6 +31,7 @@ interface TokenDetails {
   totalSupply: number | null;
   mcap: number | null;
   usdPrice: number | null;
+  decimals?: number | null;
   stats5m?: TokenStatsWindow;
   stats1h?: TokenStatsWindow;
   stats6h?: TokenStatsWindow;
@@ -60,6 +64,25 @@ const formatPercent = (value: number | null | undefined) => {
   return `${value.toFixed(2)}%`;
 };
 
+// Helpers to handle base64 in the browser without relying on Node's Buffer
+const base64ToUint8Array = (base64: string): Uint8Array => {
+  const binaryString = atob(base64);
+  const len = binaryString.length;
+  const bytes = new Uint8Array(len);
+  for (let i = 0; i < len; i += 1) {
+    bytes[i] = binaryString.charCodeAt(i);
+  }
+  return bytes;
+};
+
+const uint8ArrayToBase64 = (bytes: Uint8Array): string => {
+  let binary = "";
+  for (let i = 0; i < bytes.length; i += 1) {
+    binary += String.fromCharCode(bytes[i]);
+  }
+  return btoa(binary);
+};
+
 const InvestStockDetails = () => {
   const { mint } = useParams<{ mint: string }>();
   const navigate = useNavigate();
@@ -68,6 +91,7 @@ const InvestStockDetails = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const { wallets } = useSolanaWallets();
+  const { signTransaction } = useSignTransaction();
   const [userShares, setUserShares] = useState<string | null>(null);
   const [sharesLoading, setSharesLoading] = useState(false);
   const [usdcBalance, setUsdcBalance] = useState<string | null>(null);
@@ -82,6 +106,24 @@ const InvestStockDetails = () => {
   const [executeLoading, setExecuteLoading] = useState(false);
   const [executeError, setExecuteError] = useState<string | null>(null);
   const [executeSuccess, setExecuteSuccess] = useState<string | null>(null);
+
+  const [sellOpen, setSellOpen] = useState(false);
+  const [sellInput, setSellInput] = useState<string>("");
+  const [sellQuoteLoading, setSellQuoteLoading] = useState(false);
+  const [sellQuoteError, setSellQuoteError] = useState<string | null>(null);
+  const [sellOutUsdc, setSellOutUsdc] = useState<string | null>(null);
+  const [sellRequestId, setSellRequestId] = useState<string | null>(null);
+  const [sellUnsignedTx, setSellUnsignedTx] = useState<string | null>(null);
+  const [sellExecuteLoading, setSellExecuteLoading] = useState(false);
+  const [sellExecuteError, setSellExecuteError] = useState<string | null>(null);
+  const [sellExecuteSuccess, setSellExecuteSuccess] = useState<string | null>(null);
+
+  // Debug: log available Solana wallets in development only
+  if (import.meta.env.DEV) {
+    // This runs on render; keep it lightweight
+    // eslint-disable-next-line no-console
+    console.debug("[InvestStockDetails] Solana wallets", wallets);
+  }
 
   useEffect(() => {
     if (!mint) {
@@ -131,6 +173,7 @@ const InvestStockDetails = () => {
           totalSupply: typeof first.totalSupply === "number" ? first.totalSupply : null,
           mcap: typeof first.mcap === "number" ? first.mcap : null,
           usdPrice: typeof first.usdPrice === "number" ? first.usdPrice : null,
+          decimals: typeof first.decimals === "number" ? first.decimals : null,
           stats5m: first.stats5m,
           stats1h: first.stats1h,
           stats6h: first.stats6h,
@@ -186,11 +229,9 @@ const InvestStockDetails = () => {
           return;
         }
 
-        const base = "https://api.jup.ag/ultra/v1/holdings/address";
-        const params = new URLSearchParams({ address: ownerAddress });
-        const url = `${base}?${params.toString()}`;
+        const holdingsUrl = `https://api.jup.ag/ultra/v1/holdings/${ownerAddress}`;
 
-        const res = await fetch(url, {
+        const res = await fetch(holdingsUrl, {
           method: "GET",
           headers: {
             "x-api-key": apiKey,
@@ -206,9 +247,22 @@ const InvestStockDetails = () => {
         const data: any = await res.json();
         const tokens = data?.tokens ?? {};
 
-        // Current stock holdings: try to match by id (mint) first, then by address
-        const mintKey = token.id ?? token.address;
-        const holdingsArray = tokens[mintKey] ?? tokens[token.address];
+        const mintKey = mint ?? token.address;
+
+        if (import.meta.env.DEV) {
+          // eslint-disable-next-line no-console
+          console.debug("[InvestStockDetails] Holdings response", {
+            ownerAddress,
+            mintKey,
+            tokenId: token.id,
+            tokenAddress: token.address,
+            tokenKeys: Object.keys(tokens),
+          });
+        }
+
+        // Current stock holdings: try to match by mint from route, then by token address/id
+        const holdingsArray =
+          tokens[mintKey] ?? tokens[token.address] ?? tokens[token.id as string];
 
         if (Array.isArray(holdingsArray) && holdingsArray.length > 0) {
           const entry = holdingsArray[0];
@@ -405,6 +459,16 @@ const InvestStockDetails = () => {
                   type="button"
                   className="flex-1 rounded-full font-semibold"
                   variant="default"
+                  onClick={() => {
+                    setSellOpen(true);
+                    setSellQuoteError(null);
+                    setSellOutUsdc(null);
+                    setSellRequestId(null);
+                    setSellUnsignedTx(null);
+                    setSellExecuteError(null);
+                    setSellExecuteSuccess(null);
+                    setSellInput("");
+                  }}
                 >
                   Sell
                 </Button>
@@ -501,6 +565,10 @@ const InvestStockDetails = () => {
                     }
 
                     const data: any = await res.json();
+                    if (import.meta.env.DEV) {
+                      // eslint-disable-next-line no-console
+                      console.debug("[InvestStockDetails] Order quote response", data);
+                    }
                     const outAmountRaw = data?.outAmount as string | undefined;
                     const tx = data?.transaction as string | undefined; // unsigned serialized tx (base64)
                     const reqId = data?.requestId as string | undefined;
@@ -519,6 +587,9 @@ const InvestStockDetails = () => {
                     setUnsignedTx(tx ?? null);
                     setRequestId(reqId ?? null);
                   } catch (err: any) {
+                    // Always log quote errors to the console so issues are visible
+                    // eslint-disable-next-line no-console
+                    console.error("[InvestStockDetails] Quote error", err);
                     setQuoteError(err?.message ?? "Failed to get quote");
                   } finally {
                     setQuoteLoading(false);
@@ -570,7 +641,9 @@ const InvestStockDetails = () => {
                   setExecuteError(null);
                   setExecuteSuccess(null);
 
-                  // Resolve user's Solana wallet again for signing (first Solana wallet)
+                  // Resolve user's Solana wallet again for signing.
+                  // Use the same pattern as in the quote step (first wallet), so we
+                  // sign with the same taker wallet Jupiter used when building the tx.
                   const solWallet = wallets[0] as any;
 
                   let takerAddress: string | undefined = solWallet?.address;
@@ -591,18 +664,33 @@ const InvestStockDetails = () => {
                   // Decode unsigned transaction from base64 and sign with Privy Solana wallet
                   // Jupiter returns a versioned transaction, so use VersionedTransaction.deserialize
                   const { VersionedTransaction } = await import("@solana/web3.js");
-                  const txBytes = Buffer.from(unsignedTx, "base64");
+                  const txBytes = base64ToUint8Array(unsignedTx);
                   const transaction = VersionedTransaction.deserialize(txBytes);
 
-                  if (typeof solWallet.signTransaction !== "function") {
-                    setExecuteError("Wallet does not support transaction signing");
+                  if (import.meta.env.DEV) {
+                    // eslint-disable-next-line no-console
+                    console.debug("[InvestStockDetails] Signing transaction", {
+                      unsignedLength: txBytes.length,
+                      walletAddress: takerAddress,
+                    });
+                  }
+
+                  if (!signTransaction) {
+                    setExecuteError("Sign transaction functionality is not available");
                     setExecuteLoading(false);
                     return;
                   }
 
-                  const signedTx = await solWallet.signTransaction(transaction);
-                  const signedBytes = signedTx.serialize();
-                  const signedBase64 = Buffer.from(signedBytes).toString("base64");
+                  // Ask Privy to sign the serialized transaction bytes (per Privy docs)
+                  const serializedTx = transaction.serialize();
+                  const signResult: any = await signTransaction({
+                    transaction: new Uint8Array(serializedTx),
+                    wallet: solWallet,
+                  });
+
+                  const signedBytes: Uint8Array =
+                    signResult?.signedTransaction ?? signResult;
+                  const signedBase64 = uint8ArrayToBase64(signedBytes);
 
                   const res = await fetch("https://api.jup.ag/ultra/v1/execute", {
                     method: "POST",
@@ -621,59 +709,87 @@ const InvestStockDetails = () => {
                   }
                   const execData: any = await res.json().catch(() => null);
 
+                  if (import.meta.env.DEV) {
+                    // eslint-disable-next-line no-console
+                    console.debug("[InvestStockDetails] Execute response", execData);
+                  }
+
                   setExecuteSuccess("Order submitted successfully");
                   toast.success("Trade executed successfully");
 
                   // Fire-and-forget call to backend to record this buy order
                   const privyUserId = user?.id;
                   if (privyUserId) {
-                    try {
-                      // Resolve a Solana wallet/address for the user
-                      const solWallet = wallets.find(
-                        (w: any) =>
-                          w.walletClientType === "solana" ||
-                          w.chainType === "solana" ||
-                          w.chain === "solana"
-                      ) as any;
+                    // Resolve a Solana wallet/address for the user
+                    const solWallet = wallets.find(
+                      (w: any) =>
+                        w.walletClientType === "solana" ||
+                        w.chainType === "solana" ||
+                        w.chain === "solana"
+                    ) as any;
 
-                      let ownerAddress: string | undefined = solWallet?.address;
-                      if (!ownerAddress && solWallet && typeof solWallet.getAddress === "function") {
-                        try {
-                          ownerAddress = await solWallet.getAddress();
-                        } catch {
-                          ownerAddress = undefined;
-                        }
+                    let ownerAddress: string | undefined = solWallet?.address;
+                    if (!ownerAddress && solWallet && typeof solWallet.getAddress === "function") {
+                      try {
+                        ownerAddress = await solWallet.getAddress();
+                      } catch {
+                        ownerAddress = undefined;
                       }
-
-                      const signature =
-                        (execData as any)?.signature ??
-                        (execData as any)?.txid ??
-                        null;
-
-                      void fetch(`${API_BASE_URL}/transactions`, {
-                        method: "POST",
-                        headers: {
-                          "Content-Type": "application/json",
-                        },
-                        body: JSON.stringify({
-                          privyUserId,
-                          chainType: "solana",
-                          assetSymbol: token?.symbol ?? "USDC",
-                          amount: usdcInput,
-                          direction: "incoming",
-                          txSignature: signature,
-                          fromAddress: "jupiter",
-                          toAddress: ownerAddress ?? null,
-                          source: "invest_buy",
-                        }),
-                      }).catch(() => {
-                        // ignore logging errors in UI
-                      });
-                    } catch {
-                      // Swallow db logging errors to avoid breaking UX
                     }
+
+                    const signature =
+                      (execData as any)?.signature ??
+                      (execData as any)?.txid ??
+                      null;
+
+                    // Log generic transaction entry for this buy
+                    void fetch(`${API_BASE_URL}/transactions`, {
+                      method: "POST",
+                      headers: {
+                        "Content-Type": "application/json",
+                      },
+                      body: JSON.stringify({
+                        privyUserId,
+                        chainType: "solana",
+                        assetSymbol: token?.symbol ?? "USDC",
+                        amount: usdcInput,
+                        direction: "incoming",
+                        txSignature: signature,
+                        fromAddress: "jupiter",
+                        toAddress: ownerAddress ?? null,
+                        source: "invest_buy",
+                      }),
+                    }).catch(() => {
+                      // ignore logging errors in UI
+                    });
+
+                    // Also record a structured stock purchase entry
+                    const sharesAmount = outAmount ?? undefined;
+                    void fetch(`${API_BASE_URL}/stock-purchases`, {
+                      method: "POST",
+                      headers: {
+                        "Content-Type": "application/json",
+                      },
+                      body: JSON.stringify({
+                        privyUserId,
+                        stockMint: token?.address,
+                        stockSymbol: token?.symbol,
+                        stockName: token?.name,
+                        usdcAmount: usdcInput,
+                        sharesAmount,
+                        walletAddress: ownerAddress ?? null,
+                        txSignature: signature,
+                        jupiterRequestId: requestId,
+                        source: "invest_buy",
+                      }),
+                    }).catch(() => {
+                      // ignore logging errors in UI
+                    });
                   }
                 } catch (err: any) {
+                  // Always log execute errors so issues are visible even outside DEV builds
+                  // eslint-disable-next-line no-console
+                  console.error("[InvestStockDetails] Execute error", err);
                   setExecuteError(err?.message ?? "Failed to execute order");
                 } finally {
                   setExecuteLoading(false);
@@ -681,6 +797,343 @@ const InvestStockDetails = () => {
               }}
             >
               {executeLoading ? "Confirming..." : "Confirm buy"}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Sell dialog */}
+      <Dialog open={sellOpen} onOpenChange={setSellOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Sell {token?.symbol}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="text-sm text-muted-foreground flex items-center justify-between">
+              <span>Sell shares</span>
+              <span>
+                Available: {sharesLoading
+                  ? "Checking..."
+                  : userShares != null
+                  ? `${userShares} ${token?.symbol}`
+                  : `0 ${token?.symbol}`}
+              </span>
+            </div>
+            <div className="space-y-2">
+              <Input
+                type="number"
+                min="0"
+                step="0.000001"
+                inputMode="decimal"
+                placeholder="0.00"
+                value={sellInput}
+                onChange={async (e) => {
+                  const value = e.target.value;
+                  setSellInput(value);
+                  setSellQuoteError(null);
+                  setSellOutUsdc(null);
+                  setSellRequestId(null);
+                  setSellUnsignedTx(null);
+                  setSellExecuteError(null);
+                  setSellExecuteSuccess(null);
+
+                  const parsed = Number(value);
+                  if (!token || !value || Number.isNaN(parsed) || parsed <= 0) {
+                    return;
+                  }
+
+                  const apiKey = import.meta.env.VITE_JUP_API_KEY as string | undefined;
+                  if (!apiKey) return;
+
+                  try {
+                    setSellQuoteLoading(true);
+
+                    // Resolve taker (user's Solana wallet address)
+                    const solWallet = wallets[0] as any;
+
+                    let takerAddress: string | undefined = solWallet?.address;
+                    if (!takerAddress && solWallet && typeof solWallet.getAddress === "function") {
+                      try {
+                        takerAddress = await solWallet?.getAddress();
+                      } catch {
+                        takerAddress = undefined;
+                      }
+                    }
+
+                    if (!takerAddress) {
+                      setSellQuoteError("No Solana wallet found for taker");
+                      setSellQuoteLoading(false);
+                      return;
+                    }
+
+                    // amount in base units for the stock token using its on-chain decimals
+                    const sellDecimals =
+                      typeof token.decimals === "number" && !Number.isNaN(token.decimals)
+                        ? token.decimals
+                        : 6;
+                    const rawAmount = Math.round(parsed * 10 ** sellDecimals);
+                    const base = "https://api.jup.ag/ultra/v1/order";
+                    const params = new URLSearchParams({
+                      inputMint: token.address,
+                      outputMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+                      amount: String(rawAmount),
+                      taker: takerAddress,
+                    });
+                    const url = `${base}?${params.toString()}`;
+
+                    const res = await fetch(url, {
+                      method: "GET",
+                      headers: {
+                        "x-api-key": apiKey,
+                      },
+                    });
+
+                    if (!res.ok) {
+                      throw new Error(`Failed to quote sell order: ${res.status}`);
+                    }
+
+                    const data: any = await res.json();
+                    if (import.meta.env.DEV) {
+                      // eslint-disable-next-line no-console
+                      console.debug("[InvestStockDetails] Sell order quote response", data);
+                    }
+
+                    const outAmountRaw = data?.outAmount as string | undefined;
+                    const tx = data?.transaction as string | undefined; // unsigned serialized tx (base64)
+                    const reqId = data?.requestId as string | undefined;
+
+                    if (!outAmountRaw) {
+                      setSellOutUsdc(null);
+                      setSellRequestId(null);
+                      return;
+                    }
+
+                    // outAmount is USDC in base units (6 decimals)
+                    // outAmount is USDC in base units (6 decimals) – multiply by 100 for display
+                    const outNumber = Number(outAmountRaw) / 1_000_000;
+                    setSellOutUsdc(outNumber.toLocaleString(undefined, {
+                      maximumFractionDigits: 6,
+                    }));
+                    setSellUnsignedTx(tx ?? null);
+                    setSellRequestId(reqId ?? null);
+                  } catch (err: any) {
+                    // eslint-disable-next-line no-console
+                    console.error("[InvestStockDetails] Sell quote error", err);
+                    setSellQuoteError(err?.message ?? "Failed to get sell quote");
+                  } finally {
+                    setSellQuoteLoading(false);
+                  }
+                }}
+              />
+              <p className="text-xs text-muted-foreground">
+                Enter the amount of {token?.symbol} you want to sell for USDC.
+              </p>
+            </div>
+
+            <div className="rounded-xl bg-secondary/40 border border-border/60 p-3 text-sm space-y-1">
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-muted-foreground">Estimated USDC</span>
+                <span className="font-semibold">
+                  {sellQuoteLoading
+                    ? "Calculating..."
+                    : sellOutUsdc != null
+                    ? `${sellOutUsdc} USDC`
+                    : "-"}
+                </span>
+              </div>
+              {sellQuoteError && (
+                <p className="text-xs text-red-500 break-words">{sellQuoteError}</p>
+              )}
+              {sellExecuteError && !sellQuoteError && (
+                <p className="text-xs text-red-500 break-words">{sellExecuteError}</p>
+              )}
+              {sellExecuteSuccess && (
+                <p className="text-xs text-emerald-500 break-words">{sellExecuteSuccess}</p>
+              )}
+            </div>
+
+            <Button
+              type="button"
+              className="w-full rounded-full font-semibold"
+              disabled={!sellOutUsdc || sellQuoteLoading || sellExecuteLoading || !sellUnsignedTx || !sellRequestId}
+              onClick={async () => {
+                if (!sellUnsignedTx || !sellRequestId) return;
+
+                const apiKey = import.meta.env.VITE_JUP_API_KEY as string | undefined;
+                if (!apiKey) {
+                  setSellExecuteError("Jupiter API key is not configured (VITE_JUP_API_KEY)");
+                  return;
+                }
+
+                try {
+                  setSellExecuteLoading(true);
+                  setSellExecuteError(null);
+                  setSellExecuteSuccess(null);
+
+                  const solWallet = wallets[0] as any;
+
+                  let takerAddress: string | undefined = solWallet?.address;
+                  if (!takerAddress && solWallet && typeof solWallet.getAddress === "function") {
+                    try {
+                      takerAddress = await solWallet.getAddress();
+                    } catch {
+                      takerAddress = undefined;
+                    }
+                  }
+
+                  if (!solWallet || !takerAddress) {
+                    setSellExecuteError("No Solana wallet available to sign sell transaction");
+                    setSellExecuteLoading(false);
+                    return;
+                  }
+
+                  const { VersionedTransaction } = await import("@solana/web3.js");
+                  const txBytes = base64ToUint8Array(sellUnsignedTx);
+                  const transaction = VersionedTransaction.deserialize(txBytes);
+
+                  if (import.meta.env.DEV) {
+                    // eslint-disable-next-line no-console
+                    console.debug("[InvestStockDetails] Signing sell transaction", {
+                      unsignedLength: txBytes.length,
+                      walletAddress: takerAddress,
+                    });
+                  }
+
+                  if (!signTransaction) {
+                    setSellExecuteError("Sign transaction functionality is not available");
+                    setSellExecuteLoading(false);
+                    return;
+                  }
+
+                  const serializedTx = transaction.serialize();
+                  const signResult: any = await signTransaction({
+                    transaction: new Uint8Array(serializedTx),
+                    wallet: solWallet,
+                  });
+
+                  const signedBytes: Uint8Array =
+                    signResult?.signedTransaction ?? signResult;
+                  const signedBase64 = uint8ArrayToBase64(signedBytes);
+
+                  const res = await fetch("https://api.jup.ag/ultra/v1/execute", {
+                    method: "POST",
+                    headers: {
+                      "Content-Type": "application/json",
+                      "x-api-key": apiKey,
+                    },
+                    body: JSON.stringify({
+                      signedTransaction: signedBase64,
+                      requestId: sellRequestId,
+                    }),
+                  });
+
+                  if (!res.ok) {
+                    throw new Error(`Failed to execute sell order: ${res.status}`);
+                  }
+                  const execData: any = await res.json().catch(() => null);
+
+                  if (import.meta.env.DEV) {
+                    // eslint-disable-next-line no-console
+                    console.debug("[InvestStockDetails] Sell execute response", execData);
+                  }
+
+                  setSellExecuteSuccess("Sell order submitted successfully");
+                  toast.success("Stock sold successfully");
+
+                  const privyUserId = user?.id;
+                  if (privyUserId) {
+                    const solWallet = wallets.find(
+                      (w: any) =>
+                        w.walletClientType === "solana" ||
+                        w.chainType === "solana" ||
+                        w.chain === "solana"
+                    ) as any;
+
+                    let ownerAddress: string | undefined = solWallet?.address;
+                    if (!ownerAddress && solWallet && typeof solWallet.getAddress === "function") {
+                      try {
+                        ownerAddress = await solWallet.getAddress();
+                      } catch {
+                        ownerAddress = undefined;
+                      }
+                    }
+
+                    const signature =
+                      (execData as any)?.signature ??
+                      (execData as any)?.txid ??
+                      null;
+
+                    // Log generic transaction entry for this sale (incoming USDC)
+                    void fetch(`${API_BASE_URL}/transactions`, {
+                      method: "POST",
+                      headers: {
+                        "Content-Type": "application/json",
+                      },
+                      body: JSON.stringify({
+                        privyUserId,
+                        chainType: "solana",
+                        assetSymbol: "USDC",
+                        amount: sellOutUsdc,
+                        direction: "incoming",
+                        txSignature: signature,
+                        fromAddress: "jupiter",
+                        toAddress: ownerAddress ?? null,
+                        source: "invest_sell",
+                      }),
+                    }).catch(() => {
+                      // ignore logging errors in UI
+                    });
+
+                    // Also record a structured stock sale entry in stock_sales table
+                    const sharesAmount = sellInput || undefined;
+                    void fetch(`${API_BASE_URL}/stock-sales`, {
+                      method: "POST",
+                      headers: {
+                        "Content-Type": "application/json",
+                      },
+                      body: JSON.stringify({
+                        privyUserId,
+                        stockMint: token?.address,
+                        stockSymbol: token?.symbol,
+                        stockName: token?.name,
+                        usdcAmount: sellOutUsdc,
+                        sharesAmount,
+                        walletAddress: ownerAddress ?? null,
+                        txSignature: signature,
+                        jupiterRequestId: sellRequestId,
+                        source: "invest_sell",
+                      }),
+                    })
+                      .then(async (res) => {
+                        if (!import.meta.env.DEV) return;
+
+                        let body: any = null;
+                        try {
+                          body = await res.json();
+                        } catch {
+                          body = null;
+                        }
+                        // eslint-disable-next-line no-console
+                        console.debug("[InvestStockDetails] Stock sale backend response", {
+                          status: res.status,
+                          ok: res.ok,
+                          body,
+                        });
+                      })
+                      .catch(() => {
+                        // ignore logging errors in UI
+                      });
+                  }
+                } catch (err: any) {
+                  // eslint-disable-next-line no-console
+                  console.error("[InvestStockDetails] Sell execute error", err);
+                  setSellExecuteError(err?.message ?? "Failed to execute sell order");
+                } finally {
+                  setSellExecuteLoading(false);
+                }
+              }}
+            >
+              {sellExecuteLoading ? "Confirming..." : "Confirm sell"}
             </Button>
           </div>
         </DialogContent>

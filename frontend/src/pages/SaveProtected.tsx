@@ -163,6 +163,22 @@ const SaveProtected = () => {
             source: "save_protected_deposit",
           }),
         }).catch(() => {});
+
+        void fetch(`${API_BASE_URL}/savings`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            privyUserId,
+            vaultType: "protected",
+            direction: "deposit",
+            usdcAmount: amount,
+            walletAddress: owner,
+            txSignature: signature,
+            source: "save_protected_deposit",
+          }),
+        }).catch(() => {});
       }
     } catch (err: any) {
       setError(err?.message ?? "Failed to deposit into vault.");
@@ -237,7 +253,7 @@ const SaveProtected = () => {
 
       const privyUserId = user?.id;
       if (privyUserId && signature) {
-        void fetch("http://localhost:4000/transactions", {
+        void fetch(`${API_BASE_URL}/transactions`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -251,6 +267,22 @@ const SaveProtected = () => {
             txSignature: signature,
             fromAddress: "lulo_vault_protected",
             toAddress: owner,
+            source: "save_protected_withdraw",
+          }),
+        }).catch(() => {});
+
+        void fetch(`${API_BASE_URL}/savings`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            privyUserId,
+            vaultType: "protected",
+            direction: "withdrawal",
+            usdcAmount: amount,
+            walletAddress: owner,
+            txSignature: signature,
             source: "save_protected_withdraw",
           }),
         }).catch(() => {});
