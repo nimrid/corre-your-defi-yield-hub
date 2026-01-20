@@ -2,7 +2,9 @@ import Navigation from "@/components/Navigation";
 import { usePrivy, useWallets } from "@privy-io/react-auth";
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Copy } from "lucide-react";
+import { Copy, ChevronDown } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { US_STOCK_TOKENS } from "@/config/usStockTokens";
 
 const API_BASE_URL =
   import.meta.env.VITE_BACKEND_URL ||
@@ -21,6 +23,28 @@ interface TransactionRow {
   createdAt: string;
 }
 
+interface StockHistoryRow {
+  id: number;
+  stockMint: string;
+  stockSymbol: string | null;
+  stockName: string | null;
+  usdcAmount: string;
+  sharesAmount: string | null;
+  walletAddress: string | null;
+  txSignature: string | null;
+  jupiterRequestId: string | null;
+  source: string | null;
+  createdAt: string;
+  side: "buy" | "sell";
+}
+
+interface StockHolding {
+  mint: string;
+  name: string;
+  symbol: string;
+  amount: number;
+}
+
 const Home = () => {
   const { ready, authenticated, user } = usePrivy();
   const { wallets, ready: walletsReady } = useWallets();
@@ -29,6 +53,13 @@ const Home = () => {
   const [transactions, setTransactions] = useState<TransactionRow[]>([]);
   const [txLoading, setTxLoading] = useState(false);
   const [txError, setTxError] = useState<string | null>(null);
+  const [stockHistory, setStockHistory] = useState<StockHistoryRow[]>([]);
+  const [stockHistoryLoading, setStockHistoryLoading] = useState(false);
+  const [stockHistoryError, setStockHistoryError] = useState<string | null>(null);
+  const [stocksOpen, setStocksOpen] = useState(false);
+  const [stockBalances, setStockBalances] = useState<StockHolding[] | null>(null);
+  const [stocksLoading, setStocksLoading] = useState(false);
+  const [stocksError, setStocksError] = useState<string | null>(null);
 
   const solanaWallets = wallets.filter((w) => w.walletClientType === "solana");
   const ethereumWallets = wallets.filter((w) => w.walletClientType === "ethereum");
@@ -43,6 +74,10 @@ const Home = () => {
   const linkedEthereum = linkedWallets.filter(
     (a: any) => a.chainType === "ethereum" || a.chain === "ethereum"
   );
+
+  const primarySolanaAddress: string | undefined =
+    (solanaWallets[0] as any)?.address ??
+    (linkedSolana[0] as any)?.address;
 
   useEffect(() => {
     if (ready && !authenticated) {
@@ -101,6 +136,96 @@ const Home = () => {
   }, [ready, authenticated, user]);
 
   useEffect(() => {
+    const fetchStocks = async () => {
+      if (!stocksOpen) return;
+      if (!primarySolanaAddress) return;
+      if (stockBalances !== null || stocksLoading) return;
+
+      try {
+        setStocksLoading(true);
+        setStocksError(null);
+        const HELIUS_DAS_URL =
+          import.meta.env.VITE_HELIUS_DAS_URL ||
+          import.meta.env.VITE_SOLANA_DAS_URL ||
+          "";
+
+        if (!HELIUS_DAS_URL) {
+          setStocksError("Helius DAS URL is not configured");
+          return;
+        }
+
+        const response = await fetch(HELIUS_DAS_URL, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            jsonrpc: "2.0",
+            id: "stocks-portfolio",
+            method: "getAssetsByOwner",
+            params: {
+              ownerAddress: primarySolanaAddress,
+              page: 1,
+              limit: 1000,
+              displayOptions: {
+                showFungible: true,
+                showNativeBalance: false,
+              },
+            },
+          }),
+        });
+
+        if (!response.ok) {
+          throw new Error(`Helius DAS request failed with ${response.status}`);
+        }
+
+        const data: any = await response.json();
+        const items: any[] = data?.result?.items ?? [];
+
+        const amountsByMint: Record<string, number> = {};
+
+        for (const asset of items) {
+          const mint: string | undefined = asset?.id;
+          if (!mint) continue;
+
+          const tokenInfo: any = asset.token_info ?? asset?.tokenInfo ?? {};
+          const rawBalance = tokenInfo.balance;
+          const decimals =
+            typeof tokenInfo.decimals === "number" ? tokenInfo.decimals : 0;
+
+          if (rawBalance == null) continue;
+
+          const asNumber =
+            typeof rawBalance === "number"
+              ? rawBalance
+              : Number(rawBalance);
+          if (Number.isNaN(asNumber)) continue;
+
+          const uiAmount = decimals ? asNumber / 10 ** decimals : asNumber;
+          amountsByMint[mint] = (amountsByMint[mint] ?? 0) + uiAmount;
+        }
+
+        const holdings: StockHolding[] = US_STOCK_TOKENS.map((token) => ({
+          mint: token.mint,
+          name: token.name,
+          symbol: token.symbol,
+          amount: amountsByMint[token.mint] ?? 0,
+        }))
+          .filter((h) => h.amount > 0)
+          .sort((a, b) => b.amount - a.amount);
+
+        setStockBalances(holdings);
+      } catch (err: any) {
+        setStocksError(err?.message ?? "Failed to load stocks portfolio");
+      } finally {
+        setStocksLoading(false);
+      }
+    };
+
+    void fetchStocks();
+  }, [stocksOpen, primarySolanaAddress, stockBalances, stocksLoading]);
+
+  useEffect(() => {
     const fetchTransactions = async () => {
       if (!user?.id) return;
 
@@ -122,8 +247,30 @@ const Home = () => {
       }
     };
 
+    const fetchStockHistory = async () => {
+      if (!user?.id) return;
+
+      try {
+        setStockHistoryLoading(true);
+        setStockHistoryError(null);
+
+        const res = await fetch(`${API_BASE_URL}/stock-history/${user.id}`);
+        if (!res.ok) {
+          throw new Error("Failed to fetch stock history");
+        }
+
+        const data = await res.json();
+        setStockHistory(Array.isArray(data) ? data : []);
+      } catch (err: any) {
+        setStockHistoryError(err?.message ?? "Failed to load stock history");
+      } finally {
+        setStockHistoryLoading(false);
+      }
+    };
+
     if (ready && authenticated && user) {
       void fetchTransactions();
+      void fetchStockHistory();
     }
   }, [ready, authenticated, user]);
 
@@ -215,8 +362,103 @@ const Home = () => {
               <TotalBalance wallets={[...wallets, ...linkedSolana, ...linkedEthereum]} />
             </div>
 
+            <div className="glass-card p-6 order-3 md:order-3">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-2xl font-semibold">Stocks portfolio</h2>
+                <button
+                  type="button"
+                  onClick={() => setStocksOpen((prev) => !prev)}
+                  className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  <span>{stocksOpen ? "Hide" : "View"}</span>
+                  <ChevronDown
+                    className={`w-4 h-4 transition-transform ${stocksOpen ? "rotate-180" : "rotate-0"}`}
+                  />
+                </button>
+              </div>
+
+              {!primarySolanaAddress && (
+                <p className="text-sm text-muted-foreground">
+                  Connect a Solana wallet to see your stock tokens.
+                </p>
+              )}
+
+              {primarySolanaAddress && !stocksOpen && (
+                <p className="text-sm text-muted-foreground">
+                  View balances for your tokenized US stock positions held in your
+                  Solana wallet.
+                </p>
+              )}
+
+              {primarySolanaAddress && stocksOpen && (
+                <div className="space-y-4">
+                  {stocksLoading && (
+                    <p className="text-sm text-muted-foreground">
+                      Loading stock balances...
+                    </p>
+                  )}
+
+                  {stocksError && !stocksLoading && (
+                    <p className="text-sm text-red-500 break-words">{stocksError}</p>
+                  )}
+
+                  {!stocksLoading && !stocksError && (
+                    <>
+                      {!stockBalances?.length ? (
+                        <p className="text-sm text-muted-foreground">
+                          No supported stock tokens found in your Solana wallet.
+                        </p>
+                      ) : (
+                        <div className="space-y-2">
+                          <p className="text-sm text-muted-foreground">
+                            Top holdings in your Solana wallet:
+                          </p>
+                          <ul className="space-y-2">
+                            {stockBalances.slice(0, 5).map((holding) => (
+                              <li
+                                key={holding.mint}
+                                className="flex items-center justify-between rounded-lg bg-secondary/30 px-3 py-2 text-sm"
+                              >
+                                <div className="flex flex-col">
+                                  <span className="font-medium">{holding.name}</span>
+                                  <span className="text-xs text-muted-foreground uppercase tracking-wide">
+                                    {holding.symbol}
+                                  </span>
+                                </div>
+                                <span className="font-mono">
+                                  {holding.amount.toLocaleString(undefined, {
+                                    maximumFractionDigits: 4,
+                                  })}
+                                </span>
+                              </li>
+                            ))}
+                            {stockBalances.length > 5 && (
+                              <li className="text-xs text-muted-foreground">
+                                + {stockBalances.length - 5} more holdings
+                              </li>
+                            )}
+                          </ul>
+                        </div>
+                      )}
+
+                      <div className="pt-2">
+                        <Button
+                          type="button"
+                          size="sm"
+                          className="rounded-full text-xs font-semibold"
+                          onClick={() => navigate("/invest/us-stocks")}
+                        >
+                          Browse US stocks
+                        </Button>
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
+
             {/* Transaction History */}
-            <div className="glass-card p-6 order-3">
+            <div className="glass-card p-6 order-4">
               <h2 className="text-2xl font-semibold mb-4">Transaction History</h2>
               {txLoading ? (
                 <div className="text-center py-8 text-muted-foreground">
@@ -281,6 +523,70 @@ const Home = () => {
                   ))}
                 </div>
               )}
+
+              <div className="mt-6 border-t border-border/60 pt-4">
+                <h3 className="text-lg font-semibold mb-3">Stock trades</h3>
+                {stockHistoryLoading ? (
+                  <div className="text-center py-4 text-muted-foreground text-sm">
+                    <p>Loading stock trades...</p>
+                  </div>
+                ) : stockHistoryError ? (
+                  <div className="text-center py-4 text-red-500 text-sm">
+                    <p>{stockHistoryError}</p>
+                  </div>
+                ) : !stockHistory.length ? (
+                  <p className="text-sm text-muted-foreground">No stock trades yet.</p>
+                ) : (
+                  <div className="space-y-3 max-h-72 overflow-y-auto">
+                    {stockHistory.map((tx) => (
+                      <div
+                        key={`${tx.side}-${tx.id}-${tx.txSignature ?? "no-tx"}`}
+                        className="flex flex-col sm:flex-row sm:items-center sm:justify-between p-3 rounded-lg bg-secondary/30 text-sm"
+                      >
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-2">
+                            <span
+                              className={
+                                tx.side === "buy"
+                                  ? "text-emerald-500 font-semibold"
+                                  : "text-red-500 font-semibold"
+                              }
+                            >
+                              {tx.side === "buy" ? "Bought" : "Sold"}
+                            </span>
+                            <span className="font-mono">
+                              {tx.sharesAmount ?? "-"} {tx.stockSymbol ?? "STOCK"}
+                            </span>
+                          </div>
+                          <div className="text-xs text-muted-foreground break-all">
+                            <div>
+                              <span className="font-medium">Stock:</span>{" "}
+                              {tx.stockName ?? tx.stockSymbol ?? tx.stockMint}
+                            </div>
+                            <div>
+                              <span className="font-medium">USDC:</span>{" "}
+                              {tx.usdcAmount}
+                            </div>
+                          </div>
+                        </div>
+                        <div className="mt-2 sm:mt-0 sm:text-right text-xs text-muted-foreground space-y-1">
+                          <div>
+                            {new Date(tx.createdAt).toLocaleString(undefined, {
+                              dateStyle: "short",
+                              timeStyle: "short",
+                            })}
+                          </div>
+                          {tx.txSignature && (
+                            <div className="truncate max-w-[14rem]">
+                              <span className="font-medium">Tx:</span> {tx.txSignature}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         </div>

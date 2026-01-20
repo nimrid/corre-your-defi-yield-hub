@@ -164,6 +164,43 @@ app.get("/stock-history/:privyUserId", async (req, res) => {
   }
 });
 
+// Fetch aggregated stock holdings (net shares per stock mint) for a user
+app.get("/stock-holdings/:privyUserId", async (req, res) => {
+  const { privyUserId } = req.params;
+
+  if (!privyUserId) {
+    return res.status(400).json({ error: "privyUserId is required" });
+  }
+
+  try {
+    const result = await pool.query(
+      `SELECT stock_mint AS "stockMint",
+              COALESCE(SUM(shares_delta), 0) AS "shares"
+         FROM (
+               SELECT sp.stock_mint,
+                      COALESCE(sp.shares_amount::numeric, 0) AS shares_delta
+                 FROM stock_purchases sp
+                 JOIN users u ON u.id = sp.user_id
+                WHERE u.privy_user_id = $1
+               UNION ALL
+               SELECT ss.stock_mint,
+                      -COALESCE(ss.shares_amount::numeric, 0) AS shares_delta
+                 FROM stock_sales ss
+                 JOIN users u ON u.id = ss.user_id
+                WHERE u.privy_user_id = $1
+              ) t
+        GROUP BY stock_mint
+       HAVING COALESCE(SUM(shares_delta), 0) <> 0`,
+      [privyUserId],
+    );
+
+    return res.json(result.rows);
+  } catch (err) {
+    console.error("Error querying stock holdings", err);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
 // Record a stock purchase (US stock bought via Jupiter)
 app.post("/stock-purchases", async (req, res) => {
   const body = req.body as {

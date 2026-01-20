@@ -2,6 +2,7 @@ import Navigation from "@/components/Navigation";
 import { ArrowLeft } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { US_STOCK_MINTS } from "@/config/usStockTokens";
 
 interface TokenItem {
   id: string;
@@ -11,33 +12,6 @@ interface TokenItem {
   icon: string | null;
   usdPrice: number | null;
 }
-
-// List of US tokenized stock mints we want to display
-const US_STOCK_MINTS: string[] = [
-  "XsueG8BtpquVJX9LVLLEGuViXUungE6WmK5YZ3p3bd1", // CRCLx
-  "XsDoVfqeBukxuZHWhdvWHBhgEHjGNst4MLodqsJHzoB", // Tesla
-  "XsP7xzNPvEHS1m6qfanPUGjNmdnmsLKEoNAnHjdxxyZ", // MSTRx
-  "XsoCS1TfEyfFhfvj8EtZ528L3CaKBDBRqRapnBbDF2W", // SP500
-  "Xsc9qvGR1efVDFGLrVsmkzv3qi45LTBjeUKSPmx9qEh", // Nvidia
-  "XsCPL9dNWBMvFtTmwcCA5v3xWPSMEBCszbQdiLLq6aN", // Google
-  "XsbEhLAtcf6HdfpFZ5xEMdqW8nfAvcsP5bdudRLJzJp", // Apple
-  "Xs8S1uUs1zvS2p7iwtsG3b6fkhpvmwz4GYU3gWAmWHZ", // Nasdaq
-  "XsvNBAYkrDRNhA7wPHQfX3ZUXZyZLdnCQDfHZ56bzpg", // Robinhood
-  "Xs3eBt7uRfJX8QUs4suhyU8p2M6DoUDrJyWBa8LLZsg", // Amazon
-  "Xs7ZdzSHLU9ftNJsii5fCeJhoRWSC32SQGzGQtePxNu", // Coinbase
-  "Xsa62P5mvPszXL1krVUnU5ar38bBSVcWAB6fmPCo5Zu", // Meta
-  "XsaQTCgebC2KPbf27KUhdv5JFvHhQ4GDAPURwrEhAzb", // AMBR
-  "XsqE9cRRpzxcGKDXj1BJ7Xmg4GRhZoyY1KpmGSxAWT2", // McDonald's
-  "Xs151QeqTCiuKtinzfRATnUESM2xTU6V9Wy8Vy538ci", // WalmartX
-  "Xs6B6zawENwAbWVi7w92rjazLuAr5Az59qgWKcNb45x", // Berkshire
-  "Xs8drBWy3Sd5QY3aifG9kt9KFs2K3PGZmx7jWrsrk57", // Thermo Fisher
-  "XsaBXg8dU5cPM6ehmVctMkVqoiRG2ZjMo1cyBJ3AykQ", // Coca-Cola
-  "XsYdjDjNUygZ7yGKfQaB6TxLh2gC6RRjzLtLAGJrhzV", // Procter & Gamble
-  "XsjFwUPiLofddX5cWFHW35GCbXcSu1BCUGfxoQAQjeL", // Oracle
-  "Xs3ZFkPYT2BN7qBMqf1j1bfTeTm1rFzEFSsQ1z3wAKU", // (unspecified)
-  "Xsv9hRk1z5ystj9MhnA7Lq4vjSsLwzL2nxrwmwtD3re", // Gold
-  "XszvaiXGPwvk2nwb3o9C1CX4K6zH8sez11E6uyup6fe", // UnitedHealth
-];
 
 const JUP_TOKENS_URL = (() => {
   const base = "https://api.jup.ag/tokens/v2/search";

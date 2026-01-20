@@ -7,7 +7,7 @@ const Footer = () => {
         <div className="grid md:grid-cols-4 gap-8 mb-8">
           <div className="space-y-4">
             <div className="flex items-center space-x-2">
-              <img src="/corre_logoo.png" alt="Corre" className="w-8 h-8" />
+              <img src="/corre_logo.png" alt="Corre" className="w-8 h-8" />
               <span className="text-xl font-bold">Corre</span>
             </div>
             <p className="text-sm text-muted-foreground">

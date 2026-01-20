@@ -193,16 +193,37 @@ const InvestStockDetails = () => {
     void fetchToken();
   }, [mint]);
 
-  // Fetch user's holdings for this stock and their USDC balance using their Privy Solana wallet
+  // Fetch user's holdings for this stock (from backend DB) and their USDC balance using their Privy Solana wallet
   useEffect(() => {
     const fetchHoldings = async () => {
       try {
-        if (!token) return;
+        if (!token || !user?.id) return;
 
+        setSharesLoading(true);
+
+        // 1) Fetch net shares for this stock from backend (purchases minus sales)
+        try {
+          const res = await fetch(`${API_BASE_URL}/stock-holdings/${user.id}`);
+          if (res.ok) {
+            const rows: Array<{ stockMint: string; shares: string }> = await res.json();
+            const mintKey = mint ?? token.address;
+            const match = rows.find(
+              (row) =>
+                row.stockMint === mintKey ||
+                row.stockMint === token.address,
+            );
+            setUserShares(match ? match.shares : null);
+          } else {
+            setUserShares(null);
+          }
+        } catch {
+          setUserShares(null);
+        }
+
+        // 2) Fetch USDC balance from Jupiter holdings API using user's Solana wallet
         const apiKey = import.meta.env.VITE_JUP_API_KEY as string | undefined;
         if (!apiKey) return;
 
-        // Find a Solana wallet from Privy
         const solWallet = wallets.find(
           (w: any) =>
             w.walletClientType === "solana" ||
@@ -211,8 +232,6 @@ const InvestStockDetails = () => {
         ) as any;
 
         if (!solWallet) return;
-
-        setSharesLoading(true);
 
         let ownerAddress: string | undefined = solWallet.address;
         if (!ownerAddress && typeof solWallet.getAddress === "function") {
@@ -224,53 +243,26 @@ const InvestStockDetails = () => {
         }
 
         if (!ownerAddress) {
-          setUserShares(null);
-          setSharesLoading(false);
+          setUsdcBalance(null);
           return;
         }
 
         const holdingsUrl = `https://api.jup.ag/ultra/v1/holdings/${ownerAddress}`;
 
-        const res = await fetch(holdingsUrl, {
+        const resHoldings = await fetch(holdingsUrl, {
           method: "GET",
           headers: {
             "x-api-key": apiKey,
           },
         });
 
-        if (!res.ok) {
-          setUserShares(null);
-          setSharesLoading(false);
+        if (!resHoldings.ok) {
+          setUsdcBalance(null);
           return;
         }
 
-        const data: any = await res.json();
+        const data: any = await resHoldings.json();
         const tokens = data?.tokens ?? {};
-
-        const mintKey = mint ?? token.address;
-
-        if (import.meta.env.DEV) {
-          // eslint-disable-next-line no-console
-          console.debug("[InvestStockDetails] Holdings response", {
-            ownerAddress,
-            mintKey,
-            tokenId: token.id,
-            tokenAddress: token.address,
-            tokenKeys: Object.keys(tokens),
-          });
-        }
-
-        // Current stock holdings: try to match by mint from route, then by token address/id
-        const holdingsArray =
-          tokens[mintKey] ?? tokens[token.address] ?? tokens[token.id as string];
-
-        if (Array.isArray(holdingsArray) && holdingsArray.length > 0) {
-          const entry = holdingsArray[0];
-          const uiAmountString = entry?.uiAmountString as string | undefined;
-          setUserShares(uiAmountString ?? null);
-        } else {
-          setUserShares(null);
-        }
 
         // USDC balance (Solana USDC)
         const USDC_MINT = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
@@ -290,7 +282,7 @@ const InvestStockDetails = () => {
     };
 
     void fetchHoldings();
-  }, [token, wallets]);
+  }, [token, wallets, user, mint]);
 
   const statBlocks = useMemo(
     () => [
