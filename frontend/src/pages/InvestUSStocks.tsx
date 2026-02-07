@@ -1,8 +1,11 @@
 import Navigation from "@/components/Navigation";
-import { ArrowLeft } from "lucide-react";
+import StockHeatmapWidget from "@/components/StockHeatmapWidget";
+import { ArrowLeft, Grid3X3 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { US_STOCK_MINTS } from "@/config/usStockTokens";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
 
 interface TokenItem {
   id: string;
@@ -25,6 +28,7 @@ const InvestUSStocks = () => {
   const [tokens, setTokens] = useState<TokenItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [heatmapOpen, setHeatmapOpen] = useState(false);
 
   useEffect(() => {
     const apiKey = import.meta.env.VITE_JUP_API_KEY as string | undefined;
@@ -86,14 +90,28 @@ const InvestUSStocks = () => {
     <div className="min-h-screen bg-background text-foreground">
       <Navigation />
       <main className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-24 space-y-8">
-        <button
-          type="button"
-          onClick={() => navigate("/invest")}
-          className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors"
-        >
-          <ArrowLeft className="w-4 h-4" />
-          <span>Back to Invest</span>
-        </button>
+        <div className="flex items-center justify-between gap-3">
+          <button
+            type="button"
+            onClick={() => navigate("/invest")}
+            className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors"
+          >
+            <ArrowLeft className="w-4 h-4" />
+            <span>Back to Invest</span>
+          </button>
+
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            className="rounded-full text-xs sm:text-sm inline-flex items-center gap-1"
+            onClick={() => setHeatmapOpen(true)}
+          >
+            <Grid3X3 className="w-3 h-3" />
+            <span className="hidden xs:inline">Market heatmap</span>
+            <span className="xs:hidden">Heatmap</span>
+          </Button>
+        </div>
 
         <div className="glass-card p-6 sm:p-8 rounded-2xl space-y-6">
           <div className="space-y-2">
@@ -154,6 +172,17 @@ const InvestUSStocks = () => {
             </div>
           )}
         </div>
+
+        <Dialog open={heatmapOpen} onOpenChange={setHeatmapOpen}>
+          <DialogContent className="max-w-4xl w-full">
+            <DialogHeader>
+              <DialogTitle>Global stock market heatmap</DialogTitle>
+            </DialogHeader>
+            <div className="mt-2 h-[60vh] sm:h-[70vh] w-full">
+              <StockHeatmapWidget />
+            </div>
+          </DialogContent>
+        </Dialog>
       </main>
     </div>
   );

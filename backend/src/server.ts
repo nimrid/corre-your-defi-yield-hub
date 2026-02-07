@@ -3,12 +3,16 @@ import cors from "cors";
 import { pool } from "./db.js";
 import type { UserInput, WalletInput } from "./models/user";
 import type { TransactionInput } from "./models/transaction";
+import africaRoutes from "./routes/africaRoutes.js";
 
 const app = express();
 const port = process.env.PORT || 4000;
 
 app.use(cors());
 app.use(express.json());
+
+// Mount Africa-specific routes
+app.use("/fonbnk/africa", africaRoutes);
 
 (async () => {
   try {
@@ -160,6 +164,95 @@ app.get("/stock-history/:privyUserId", async (req, res) => {
     }
   } catch (err) {
     console.error("Error querying stock history", err);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// Signed proxy for Fonbnk order limits. Expects query params matching Fonbnk's API.
+app.get("/fonbnk/order-limits", async (req, res) => {
+  try {
+    if (!FONBNK_CLIENT_ID || !FONBNK_CLIENT_SECRET) {
+      return res.status(500).json({
+        error: "Fonbnk client credentials are not configured on the server",
+      });
+    }
+
+    const ENDPOINT = "/api/v2/order-limits";
+    const search = new URLSearchParams(req.query as Record<string, string>).toString();
+    const endpoint = search ? `${ENDPOINT}?${search}` : ENDPOINT;
+
+    const { timestamp, signature } = signFonbnkEndpoint(endpoint);
+
+    const response = await fetch(`${FONBNK_BASE_URL}${endpoint}`, {
+      method: "GET",
+      headers: {
+        "Content-Type": "application/json",
+        "x-client-id": FONBNK_CLIENT_ID,
+        "x-timestamp": timestamp,
+        "x-signature": signature,
+      },
+    });
+
+    if (!response.ok) {
+      const text = await response.text().catch(() => "");
+      console.error("Fonbnk order-limits request failed", response.status, response.statusText, text);
+      return res.status(502).json({ error: "Failed to fetch order limits from Fonbnk" });
+    }
+
+    const data = await response.json();
+    return res.json(data);
+  } catch (err) {
+    console.error("Error calling Fonbnk order-limits endpoint", err);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// Proxy Fonbnk currencies endpoint so the frontend does not call third-party APIs directly
+app.get("/fonbnk/currencies", async (_req, res) => {
+  try {
+    if (!FONBNK_CLIENT_ID || !FONBNK_CLIENT_SECRET) {
+      return res.status(500).json({
+        error: "Fonbnk client credentials are not configured on the server",
+      });
+    }
+
+    if (fonbnkCurrenciesFailureCount >= FONBNK_CURRENCIES_MAX_FAILURES) {
+      return res.status(502).json({
+        error: "Fonbnk currencies endpoint temporarily disabled due to repeated failures",
+      });
+    }
+
+    const ENDPOINT = "/api/v2/currencies";
+    const { timestamp, signature } = signFonbnkEndpoint(ENDPOINT);
+
+    const response = await fetch(`${FONBNK_BASE_URL}${ENDPOINT}`, {
+      method: "GET",
+      headers: {
+        "Content-Type": "application/json",
+        "x-client-id": FONBNK_CLIENT_ID,
+        "x-timestamp": timestamp,
+        "x-signature": signature,
+      },
+    });
+
+    if (!response.ok) {
+      const text = await response.text().catch(() => "");
+      fonbnkCurrenciesFailureCount += 1;
+      console.error(
+        "Fonbnk currencies request failed",
+        response.status,
+        response.statusText,
+        text,
+      );
+      return res.status(502).json({ error: "Failed to fetch currencies from Fonbnk" });
+    }
+
+    fonbnkCurrenciesFailureCount = 0;
+    const data = await response.json();
+    return res.json(data);
+  } catch (err) {
+    fonbnkCurrenciesFailureCount += 1;
+    console.error("Error calling Fonbnk currencies endpoint", err);
     return res.status(500).json({ error: "Internal server error" });
   }
 });

@@ -1,4 +1,5 @@
 import Navigation from "@/components/Navigation";
+import TradingViewWidget from "@/components/TradingViewWidget";
 import { ArrowLeft, Copy } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
@@ -354,6 +355,15 @@ const InvestStockDetails = () => {
                   {typeof token.mcap === "number" && (
                     <p className="text-xs text-muted-foreground">Mcap {formatUsd(token.mcap)}</p>
                   )}
+                </div>
+              </div>
+
+              <div className="mt-4 rounded-xl bg-secondary/40 border border-border/60 p-3">
+                <div className="text-xs text-muted-foreground mb-2 font-semibold uppercase tracking-wide">
+                  Price chart
+                </div>
+                <div className="h-56 sm:h-72 md:h-80 w-full">
+                  <TradingViewWidget symbol={`CRYPTO:${token.symbol}USD|1D`} />
                 </div>
               </div>
 

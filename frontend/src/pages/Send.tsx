@@ -36,7 +36,11 @@ const Send = () => {
               Transfer USDC to another crypto wallet address.
             </p>
           </button>
-          <button className="glass-card p-6 text-left rounded-2xl hover:shadow-lg transition-shadow" type="button">
+          <button
+            className="glass-card p-6 text-left rounded-2xl hover:shadow-lg transition-shadow"
+            type="button"
+            onClick={() => navigate("/send/bank")}
+          >
             <h2 className="text-xl font-semibold mb-2">Send to bank</h2>
             <p className="text-sm text-muted-foreground">
               Cash out to a linked bank account.
