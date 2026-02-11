@@ -4,6 +4,14 @@ import { pool } from "./db.js";
 import type { UserInput, WalletInput } from "./models/user";
 import type { TransactionInput } from "./models/transaction";
 import africaRoutes from "./routes/africaRoutes.js";
+import heliusWebhookRoutes from "./routes/heliusWebhook.js";
+import privyWebhookRoutes from "./routes/privyWebhook.js";
+import {
+  checkGasSponsorshipEligibility,
+  detectSuspiciousPatterns,
+  logSuspiciousActivity,
+  checkCircuitBreaker,
+} from "./middleware/gasSponsorship.js";
 
 const app = express();
 const port = process.env.PORT || 4000;
@@ -13,6 +21,12 @@ app.use(express.json());
 
 // Mount Africa-specific routes
 app.use("/fonbnk/africa", africaRoutes);
+
+// Mount Helius webhook routes
+app.use("/api/webhooks", heliusWebhookRoutes);
+
+// Mount Privy webhook routes
+app.use("/api/webhooks", privyWebhookRoutes);
 
 (async () => {
   try {
@@ -31,6 +45,56 @@ app.use("/fonbnk/africa", africaRoutes);
         completed_at TIMESTAMPTZ,
         UNIQUE (privy_user_id, withdrawal_id)
       )`,
+    );
+
+    await pool.query(
+      `CREATE TABLE IF NOT EXISTS privy_transactions (
+        id SERIAL PRIMARY KEY,
+        transaction_id TEXT NOT NULL UNIQUE,
+        wallet_id TEXT NOT NULL,
+        caip2 TEXT NOT NULL,
+        user_operation_hash TEXT,
+        transaction_hash TEXT,
+        replacement_transaction_id TEXT,
+        status TEXT NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        confirmed_at TIMESTAMPTZ,
+        reverted_at TIMESTAMPTZ,
+        failed_at TIMESTAMPTZ,
+        replaced_at TIMESTAMPTZ
+      )`,
+    );
+
+    await pool.query(
+      `CREATE TABLE IF NOT EXISTS suspicious_activity (
+        id SERIAL PRIMARY KEY,
+        privy_user_id TEXT NOT NULL,
+        activity_type TEXT NOT NULL,
+        details JSONB,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )`,
+    );
+
+    await pool.query(
+      `CREATE TABLE IF NOT EXISTS circuit_breaker (
+        id SERIAL PRIMARY KEY,
+        name TEXT NOT NULL,
+        enabled BOOLEAN NOT NULL DEFAULT true,
+        reason TEXT,
+        expires_at TIMESTAMPTZ NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )`,
+    );
+
+    await pool.query(
+      `CREATE INDEX IF NOT EXISTS idx_suspicious_activity_user 
+       ON suspicious_activity(privy_user_id, created_at DESC)`,
+    );
+
+    await pool.query(
+      `CREATE INDEX IF NOT EXISTS idx_circuit_breaker_name 
+       ON circuit_breaker(name, created_at DESC)`,
     );
 
     await pool.query(
@@ -87,6 +151,121 @@ app.use("/fonbnk/africa", africaRoutes);
 
 app.get("/health", (_req, res) => {
   res.json({ status: "ok" });
+});
+
+// Check gas sponsorship eligibility
+app.post("/gas-sponsorship/check", async (req, res) => {
+  const { privyUserId, amountUSD } = req.body;
+
+  console.log("Gas sponsorship check request:", { privyUserId, amountUSD });
+
+  if (!privyUserId || typeof amountUSD !== "number") {
+    console.error("Invalid request:", { privyUserId, amountUSD });
+    return res.status(400).json({ error: "privyUserId and amountUSD are required" });
+  }
+
+  try {
+    // Check circuit breaker first
+    const circuitBreaker = await checkCircuitBreaker();
+    if (!circuitBreaker.enabled) {
+      console.log("Circuit breaker is active:", circuitBreaker.reason);
+      return res.json({
+        allowed: false,
+        reason: circuitBreaker.reason,
+      });
+    }
+
+    // Check rate limits and spending caps
+    const eligibility = await checkGasSponsorshipEligibility(privyUserId, amountUSD);
+    console.log("Eligibility result:", eligibility);
+
+    if (!eligibility.allowed) {
+      // Log denied attempt
+      await logSuspiciousActivity(privyUserId, "rate_limit_exceeded", {
+        amountUSD,
+        reason: eligibility.reason,
+      });
+    }
+
+    // Check for suspicious patterns
+    const patterns = await detectSuspiciousPatterns(privyUserId);
+    if (patterns.suspicious) {
+      console.warn("Suspicious patterns detected:", patterns.reasons);
+      await logSuspiciousActivity(privyUserId, "suspicious_pattern", {
+        reasons: patterns.reasons,
+      });
+
+      // Optionally deny if patterns are too suspicious
+      // return res.json({
+      //   allowed: false,
+      //   reason: "Suspicious activity detected",
+      // });
+    }
+
+    return res.json(eligibility);
+  } catch (err) {
+    console.error("Error checking gas sponsorship eligibility:", err);
+    // Return allowed: true to not block users if check fails
+    return res.json({
+      allowed: true,
+      reason: "Eligibility check unavailable, proceeding with caution",
+    });
+  }
+});
+
+// Get gas sponsorship stats (for monitoring dashboard)
+app.get("/gas-sponsorship/stats", async (_req, res) => {
+  try {
+    const now = new Date();
+    const oneDayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+    const oneWeekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+
+    // Get transaction stats
+    const txStats = await pool.query(
+      `SELECT 
+        COUNT(*) FILTER (WHERE created_at >= $1) as daily_tx_count,
+        COUNT(*) FILTER (WHERE created_at >= $2) as weekly_tx_count,
+        COALESCE(SUM(amount::numeric) FILTER (WHERE created_at >= $1), 0) as daily_spend,
+        COALESCE(SUM(amount::numeric) FILTER (WHERE created_at >= $2), 0) as weekly_spend
+       FROM transactions
+       WHERE direction = 'outgoing' AND source = 'send_wallet'`,
+      [oneDayAgo, oneWeekAgo]
+    );
+
+    // Get suspicious activity count
+    const suspiciousStats = await pool.query(
+      `SELECT 
+        COUNT(*) FILTER (WHERE created_at >= $1) as daily_suspicious,
+        COUNT(*) FILTER (WHERE created_at >= $2) as weekly_suspicious
+       FROM suspicious_activity`,
+      [oneDayAgo, oneWeekAgo]
+    );
+
+    // Get circuit breaker status
+    const circuitBreaker = await checkCircuitBreaker();
+
+    return res.json({
+      transactions: {
+        daily: parseInt(txStats.rows[0].daily_tx_count || "0"),
+        weekly: parseInt(txStats.rows[0].weekly_tx_count || "0"),
+      },
+      spending: {
+        daily: parseFloat(txStats.rows[0].daily_spend || "0"),
+        weekly: parseFloat(txStats.rows[0].weekly_spend || "0"),
+      },
+      suspicious: {
+        daily: parseInt(suspiciousStats.rows[0].daily_suspicious || "0"),
+        weekly: parseInt(suspiciousStats.rows[0].weekly_suspicious || "0"),
+      },
+      circuitBreaker: {
+        enabled: circuitBreaker.enabled,
+        reason: circuitBreaker.reason,
+      },
+    });
+  } catch (err) {
+    console.error("Error fetching gas sponsorship stats:", err);
+    return res.status(500).json({ error: "Internal server error" });
+  }
 });
 
 // Simple example route for users
@@ -511,6 +690,39 @@ app.get("/transactions/:privyUserId", async (req, res) => {
     return res.json(result.rows);
   } catch (err) {
     console.error("Error querying transactions", err);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// Fetch savings activity (deposits/withdrawals) for a given Privy user id
+app.get("/savings-activity/:privyUserId", async (req, res) => {
+  const { privyUserId } = req.params;
+
+  if (!privyUserId) {
+    return res.status(400).json({ error: "privyUserId is required" });
+  }
+
+  try {
+    const result = await pool.query(
+      `SELECT sa.id,
+              sa.vault_type AS "vaultType",
+              sa.direction,
+              sa.usdc_amount AS "amount",
+              sa.wallet_address AS "walletAddress",
+              sa.tx_signature AS "txSignature",
+              sa.source,
+              sa.created_at AS "createdAt"
+         FROM savings_activity sa
+         JOIN users u ON u.id = sa.user_id
+        WHERE u.privy_user_id = $1
+        ORDER BY sa.created_at DESC
+        LIMIT 100`,
+      [privyUserId],
+    );
+
+    return res.json(result.rows);
+  } catch (err) {
+    console.error("Error querying savings activity", err);
     return res.status(500).json({ error: "Internal server error" });
   }
 });

@@ -31,8 +31,8 @@ createRoot(document.getElementById("root")!).render(
       config={{
         appearance: {walletChainType: 'ethereum-and-solana'},
         embeddedWallets: {
-          ethereum: { createOnLogin: "users-without-wallets" },
-          solana: { createOnLogin: "users-without-wallets" },
+          ethereum: { createOnLogin: "all-users" },
+          solana: { createOnLogin: "all-users" },
         },
         solana: {
           rpcs: {

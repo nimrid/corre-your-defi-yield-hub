@@ -2,6 +2,7 @@
   "name": "Corre - Earn DeFi Yields & Invest in Capital Markets",
   "short_name": "Corre",
   "description": "Bridge DeFi and traditional finance. Earn yields and invest your USDC in stocks and bonds with Corre.",
+  "version": "1.0.0.1",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#020817",

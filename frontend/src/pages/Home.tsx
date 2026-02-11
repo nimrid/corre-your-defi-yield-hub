@@ -45,6 +45,17 @@ interface StockHolding {
   amount: number;
 }
 
+interface SavingsActivityRow {
+  id: number;
+  vaultType: "regular" | "protected";
+  direction: "deposit" | "withdrawal";
+  amount: string;
+  walletAddress: string | null;
+  txSignature: string | null;
+  source: string | null;
+  createdAt: string;
+}
+
 const Home = () => {
   const { ready, authenticated, user } = usePrivy();
   const { wallets, ready: walletsReady } = useWallets();
@@ -53,6 +64,9 @@ const Home = () => {
   const [transactions, setTransactions] = useState<TransactionRow[]>([]);
   const [txLoading, setTxLoading] = useState(false);
   const [txError, setTxError] = useState<string | null>(null);
+  const [savingsActivity, setSavingsActivity] = useState<SavingsActivityRow[]>([]);
+  const [savingsLoading, setSavingsLoading] = useState(false);
+  const [savingsError, setSavingsError] = useState<string | null>(null);
   const [stockHistory, setStockHistory] = useState<StockHistoryRow[]>([]);
   const [stockHistoryLoading, setStockHistoryLoading] = useState(false);
   const [stockHistoryError, setStockHistoryError] = useState<string | null>(null);
@@ -247,6 +261,27 @@ const Home = () => {
       }
     };
 
+    const fetchSavingsActivity = async () => {
+      if (!user?.id) return;
+
+      try {
+        setSavingsLoading(true);
+        setSavingsError(null);
+
+        const res = await fetch(`${API_BASE_URL}/savings-activity/${user.id}`);
+        if (!res.ok) {
+          throw new Error("Failed to fetch savings activity");
+        }
+
+        const data = await res.json();
+        setSavingsActivity(Array.isArray(data) ? data : []);
+      } catch (err: any) {
+        setSavingsError(err?.message ?? "Failed to load savings activity");
+      } finally {
+        setSavingsLoading(false);
+      }
+    };
+
     const fetchStockHistory = async () => {
       if (!user?.id) return;
 
@@ -270,6 +305,7 @@ const Home = () => {
 
     if (ready && authenticated && user) {
       void fetchTransactions();
+      void fetchSavingsActivity();
       void fetchStockHistory();
     }
   }, [ready, authenticated, user]);
@@ -460,67 +496,138 @@ const Home = () => {
             {/* Transaction History */}
             <div className="glass-card p-6 order-4">
               <h2 className="text-2xl font-semibold mb-4">Transaction History</h2>
-              {txLoading ? (
+              {txLoading || savingsLoading ? (
                 <div className="text-center py-8 text-muted-foreground">
                   <p>Loading transactions...</p>
                 </div>
-              ) : txError ? (
+              ) : txError || savingsError ? (
                 <div className="text-center py-8 text-red-500 text-sm">
-                  <p>{txError}</p>
+                  <p>{txError || savingsError}</p>
                 </div>
-              ) : !transactions.length ? (
+              ) : !transactions.length && !savingsActivity.length ? (
                 <div className="text-center py-8 text-muted-foreground">
                   <p>No transactions yet.</p>
                 </div>
               ) : (
                 <div className="space-y-3 max-h-80 overflow-y-auto">
-                  {transactions.map((tx) => (
-                    <div
-                      key={tx.id}
-                      className="flex flex-col sm:flex-row sm:items-center sm:justify-between p-3 rounded-lg bg-secondary/30 text-sm"
-                    >
-                      <div className="space-y-1">
-                        <div className="flex items-center gap-2">
-                          <span
-                            className={
-                              tx.direction === "incoming"
-                                ? "text-emerald-500 font-semibold"
-                                : "text-red-500 font-semibold"
-                            }
+                  {/* Combine and sort transactions and savings activity by date */}
+                  {[
+                    ...transactions.map((tx) => ({
+                      ...tx,
+                      type: "transfer" as const,
+                      sortDate: new Date(tx.createdAt).getTime(),
+                    })),
+                    ...savingsActivity.map((sa) => ({
+                      ...sa,
+                      type: "savings" as const,
+                      sortDate: new Date(sa.createdAt).getTime(),
+                    })),
+                  ]
+                    .sort((a, b) => b.sortDate - a.sortDate)
+                    .map((item, idx) => {
+                      if (item.type === "transfer") {
+                        const tx = item as TransactionRow & { type: "transfer"; sortDate: number };
+                        return (
+                          <div
+                            key={`tx-${tx.id}`}
+                            className="flex flex-col sm:flex-row sm:items-center sm:justify-between p-3 rounded-lg bg-secondary/30 text-sm"
                           >
-                            {tx.direction === "incoming" ? "Received" : "Sent"}
-                          </span>
-                          <span className="font-mono">
-                            {tx.amount} {tx.assetSymbol}
-                          </span>
-                        </div>
-                        <div className="text-xs text-muted-foreground break-all">
-                          <div>
-                            <span className="font-medium">From:</span> {tx.fromAddress}
+                            <div className="space-y-1">
+                              <div className="flex items-center gap-2">
+                                <span
+                                  className={
+                                    tx.direction === "incoming"
+                                      ? "text-emerald-500 font-semibold"
+                                      : "text-red-500 font-semibold"
+                                  }
+                                >
+                                  {tx.direction === "incoming" ? "Received" : "Sent"}
+                                </span>
+                                <span className="font-mono">
+                                  {tx.amount} {tx.assetSymbol}
+                                </span>
+                              </div>
+                              <div className="text-xs text-muted-foreground break-all">
+                                <div>
+                                  <span className="font-medium">From:</span> {tx.fromAddress}
+                                </div>
+                                <div>
+                                  <span className="font-medium">To:</span> {tx.toAddress}
+                                </div>
+                              </div>
+                            </div>
+                            <div className="mt-2 sm:mt-0 sm:text-right text-xs text-muted-foreground space-y-1">
+                              <div>
+                                {new Date(tx.createdAt).toLocaleString(undefined, {
+                                  dateStyle: "short",
+                                  timeStyle: "short",
+                                })}
+                              </div>
+                              <div className="uppercase tracking-wide">
+                                {tx.chainType}
+                              </div>
+                              {tx.txSignature && (
+                                <div className="truncate max-w-[14rem]">
+                                  <span className="font-medium">Tx:</span> {tx.txSignature}
+                                </div>
+                              )}
+                            </div>
                           </div>
-                          <div>
-                            <span className="font-medium">To:</span> {tx.toAddress}
+                        );
+                      } else {
+                        const sa = item as SavingsActivityRow & { type: "savings"; sortDate: number };
+                        return (
+                          <div
+                            key={`savings-${sa.id}`}
+                            className="flex flex-col sm:flex-row sm:items-center sm:justify-between p-3 rounded-lg bg-secondary/30 text-sm"
+                          >
+                            <div className="space-y-1">
+                              <div className="flex items-center gap-2">
+                                <span
+                                  className={
+                                    sa.direction === "deposit"
+                                      ? "text-emerald-500 font-semibold"
+                                      : "text-red-500 font-semibold"
+                                  }
+                                >
+                                  {sa.direction === "deposit" ? "Deposited" : "Withdrawn"}
+                                </span>
+                                <span className="font-mono">
+                                  {sa.amount} USDC
+                                </span>
+                              </div>
+                              <div className="text-xs text-muted-foreground break-all">
+                                <div>
+                                  <span className="font-medium">Vault:</span>{" "}
+                                  {sa.vaultType === "regular" ? "Regular Savings" : "Protected Savings"}
+                                </div>
+                                {sa.walletAddress && (
+                                  <div>
+                                    <span className="font-medium">Wallet:</span> {sa.walletAddress}
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                            <div className="mt-2 sm:mt-0 sm:text-right text-xs text-muted-foreground space-y-1">
+                              <div>
+                                {new Date(sa.createdAt).toLocaleString(undefined, {
+                                  dateStyle: "short",
+                                  timeStyle: "short",
+                                })}
+                              </div>
+                              <div className="uppercase tracking-wide">
+                                Solana
+                              </div>
+                              {sa.txSignature && (
+                                <div className="truncate max-w-[14rem]">
+                                  <span className="font-medium">Tx:</span> {sa.txSignature}
+                                </div>
+                              )}
+                            </div>
                           </div>
-                        </div>
-                      </div>
-                      <div className="mt-2 sm:mt-0 sm:text-right text-xs text-muted-foreground space-y-1">
-                        <div>
-                          {new Date(tx.createdAt).toLocaleString(undefined, {
-                            dateStyle: "short",
-                            timeStyle: "short",
-                          })}
-                        </div>
-                        <div className="uppercase tracking-wide">
-                          {tx.chainType}
-                        </div>
-                        {tx.txSignature && (
-                          <div className="truncate max-w-[14rem]">
-                            <span className="font-medium">Tx:</span> {tx.txSignature}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  ))}
+                        );
+                      }
+                    })}
                 </div>
               )}
 

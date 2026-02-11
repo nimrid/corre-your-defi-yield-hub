@@ -15,7 +15,6 @@ import { FormEvent, useState } from "react";
 import { usePrivy } from "@privy-io/react-auth";
 
 import {
-  useSignAndSendTransaction,
   useWallets as useSolanaWallets,
 } from "@privy-io/react-auth/solana";
 
@@ -28,7 +27,6 @@ const USDC_MINT = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"; // Solana USDC
 const SendWallet = () => {
   const navigate = useNavigate();
   const { user } = usePrivy();
-  const { signAndSendTransaction } = useSignAndSendTransaction();
   const { wallets } = useSolanaWallets();
 
   const [amount, setAmount] = useState("");
@@ -58,14 +56,63 @@ const SendWallet = () => {
       return;
     }
 
+    // Debug: Log all wallets to see what we have
+    console.log("Available wallets:", wallets.map((w: any) => ({
+      address: w.address,
+      connectorType: w.connectorType,
+      walletClientType: w.walletClientType,
+      imported: w.imported,
+      chainType: w.chainType,
+    })));
+
+    // Use the first Solana wallet - if it's embedded, sponsorship will work
+    // If it's external, Privy will throw the error
     const selectedWallet = wallets[0];
+    
     if (!selectedWallet?.address) {
       setError("No Solana wallet found. Please make sure your wallet is connected.");
       return;
     }
 
+    console.log("Using wallet:", {
+      address: selectedWallet.address,
+      connectorType: (selectedWallet as any).connectorType,
+      walletClientType: (selectedWallet as any).walletClientType,
+    });
+
     try {
       setLoading(true);
+
+      // Check gas sponsorship eligibility first
+      try {
+        const eligibilityResponse = await fetch(`${API_BASE_URL}/gas-sponsorship/check`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            privyUserId: user?.id,
+            amountUSD: Number(amount),
+          }),
+        });
+
+        if (!eligibilityResponse.ok) {
+          console.error("Eligibility check failed:", await eligibilityResponse.text());
+          setError("Unable to verify transaction eligibility. Please try again.");
+          return;
+        }
+
+        const eligibility = await eligibilityResponse.json();
+
+        if (!eligibility.allowed) {
+          setError(eligibility.reason || "Transaction not allowed at this time.");
+          return;
+        }
+      } catch (eligibilityError) {
+        console.error("Eligibility check error:", eligibilityError);
+        // Continue anyway - don't block transaction if eligibility check fails
+        console.warn("Proceeding with transaction despite eligibility check failure");
+      }
 
       const {
         Connection,
@@ -95,27 +142,51 @@ const SendWallet = () => {
       // USDC has 6 decimals on Solana
       const rawAmount = Math.floor(amountNumber * 1_000_000);
 
+      const { blockhash } = await connection.getLatestBlockhash("finalized");
+
+      const transaction = new Transaction();
+      transaction.feePayer = fromPubkey;
+      transaction.recentBlockhash = blockhash;
+
+      // Check if recipient's token account exists, create it if not
+      const toAccountInfo = await connection.getAccountInfo(toTokenAccount);
+      if (!toAccountInfo) {
+        const createAccountIx = createAssociatedTokenAccountInstruction(
+          fromPubkey, // payer
+          toTokenAccount, // associated token account
+          toPubkey, // owner
+          usdcMint // mint
+        );
+        transaction.add(createAccountIx);
+      }
+
+      // Add the transfer instruction
       const transferIx = createTransferInstruction(
         fromTokenAccount,
         toTokenAccount,
         fromPubkey,
         rawAmount
       );
+      transaction.add(transferIx);
 
-      const { blockhash } = await connection.getLatestBlockhash("finalized");
-
-      const transaction = new Transaction().add(transferIx);
-      transaction.feePayer = fromPubkey;
-      transaction.recentBlockhash = blockhash;
-
-      // Use Privy's useSignAndSendTransaction hook pattern
-      const serialized = transaction.serialize({ requireAllSignatures: false });
-      const result = await signAndSendTransaction({
-        transaction: new Uint8Array(serialized),
-        wallet: selectedWallet,
+      // Security: Strip CloseAccount instructions to prevent rent refund exploitation
+      // See: https://docs.privy.io/wallets/gas-and-asset-management/gas/security
+      transaction.instructions = transaction.instructions.filter((instruction) => {
+        // CloseAccount instruction has discriminator 0x0a (10 in decimal)
+        const discriminator = instruction.data[0];
+        return discriminator !== 0x0a;
       });
 
-      const signature = result?.signature?.toString() ?? "";
+      // Use Privy wallet client to sign and send transaction with gas sponsorship
+      // Privy automatically sponsors the transaction for embedded wallets
+      const signedTxResponse = await selectedWallet.signTransaction({
+        transaction: transaction.serialize({ requireAllSignatures: false }),
+      });
+      
+      const signature = await connection.sendRawTransaction(signedTxResponse.signedTransaction);
+      
+      // Wait for confirmation
+      await connection.confirmTransaction(signature, "confirmed");
 
       setSuccess(`Transaction submitted: ${signature}`);
 
