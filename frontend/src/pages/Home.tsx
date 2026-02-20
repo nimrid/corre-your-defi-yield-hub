@@ -355,37 +355,6 @@ const Home = () => {
                         )}
                       </div>
                     </details>
-
-                    <details className="rounded-lg bg-secondary/30 p-4">
-                      <summary className="cursor-pointer font-semibold">Ethereum Wallets</summary>
-                      <div className="mt-4 space-y-3">
-                        {ethereumWallets.length || linkedEthereum.length ? (
-                          <>
-                            {ethereumWallets.map((wallet) => (
-                              <WalletRow
-                                key={(wallet as any).id ?? wallet.address ?? Math.random()}
-                                wallet={wallet}
-                              />
-                            ))}
-                            {linkedEthereum
-                              .filter(
-                                (a: any) =>
-                                  !ethereumWallets.some(
-                                    (w) => w.address && w.address === a.address
-                                  )
-                              )
-                              .map((a: any, idx: number) => (
-                                <LinkedWalletRow
-                                  key={`linked-eth-${idx}-${a.address}`}
-                                  account={a}
-                                />
-                              ))}
-                          </>
-                        ) : (
-                          <p className="text-sm text-muted-foreground">No Ethereum wallets connected</p>
-                        )}
-                      </div>
-                    </details>
                   </>
                 )}
               </div>

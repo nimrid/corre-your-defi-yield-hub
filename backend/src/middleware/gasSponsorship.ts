@@ -17,6 +17,7 @@ const DEFAULT_LIMITS: RateLimitConfig = {
 
 export interface GasSponsorshipCheck {
   allowed: boolean;
+  sponsorshipAllowed?: boolean;
   reason?: string;
   currentHourlyCount?: number;
   currentDailyCount?: number;
@@ -33,11 +34,13 @@ export async function checkGasSponsorshipEligibility(
   limits: RateLimitConfig = DEFAULT_LIMITS
 ): Promise<GasSponsorshipCheck> {
   try {
-    // Check single transaction limit
+    // Check single transaction limit for gas sponsorship only.
+    // If above this amount, we still allow the transaction but disable sponsorship.
     if (amountUSD > limits.maxSingleTransactionUSD) {
       return {
-        allowed: false,
-        reason: `Transaction amount ($${amountUSD}) exceeds maximum allowed ($${limits.maxSingleTransactionUSD})`,
+        allowed: true,
+        sponsorshipAllowed: false,
+        reason: `Transaction amount ($${amountUSD}) exceeds maximum sponsored amount ($${limits.maxSingleTransactionUSD})`,
       };
     }
 
@@ -68,6 +71,7 @@ export async function checkGasSponsorshipEligibility(
     if (hourlyCount >= limits.maxTransactionsPerHour) {
       return {
         allowed: false,
+        sponsorshipAllowed: false,
         reason: `Hourly transaction limit reached (${hourlyCount}/${limits.maxTransactionsPerHour})`,
         currentHourlyCount: hourlyCount,
         currentDailyCount: dailyCount,
@@ -79,6 +83,7 @@ export async function checkGasSponsorshipEligibility(
     if (dailyCount >= limits.maxTransactionsPerDay) {
       return {
         allowed: false,
+        sponsorshipAllowed: false,
         reason: `Daily transaction limit reached (${dailyCount}/${limits.maxTransactionsPerDay})`,
         currentHourlyCount: hourlyCount,
         currentDailyCount: dailyCount,
@@ -90,6 +95,7 @@ export async function checkGasSponsorshipEligibility(
     if (dailySpend + amountUSD > limits.maxDailySpendUSD) {
       return {
         allowed: false,
+        sponsorshipAllowed: false,
         reason: `Daily spending limit would be exceeded ($${(dailySpend + amountUSD).toFixed(2)}/$${limits.maxDailySpendUSD})`,
         currentHourlyCount: hourlyCount,
         currentDailyCount: dailyCount,
@@ -97,9 +103,10 @@ export async function checkGasSponsorshipEligibility(
       };
     }
 
-    // All checks passed
+    // All checks passed and transaction is eligible for sponsorship
     return {
       allowed: true,
+      sponsorshipAllowed: true,
       currentHourlyCount: hourlyCount,
       currentDailyCount: dailyCount,
       currentDailySpend: dailySpend,
@@ -110,6 +117,7 @@ export async function checkGasSponsorshipEligibility(
     // In production, you might want to fail closed for security
     return {
       allowed: true,
+      sponsorshipAllowed: true,
       reason: "Eligibility check unavailable, proceeding with caution",
     };
   }

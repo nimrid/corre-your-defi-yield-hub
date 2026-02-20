@@ -29,6 +29,28 @@ export const US_STOCK_TOKENS: USStockTokenConfig[] = [
   { mint: "Xs3ZFkPYT2BN7qBMqf1j1bfTeTm1rFzEFSsQ1z3wAKU", name: "Unknown", symbol: "STOCK" },
   { mint: "Xsv9hRk1z5ystj9MhnA7Lq4vjSsLwzL2nxrwmwtD3re", name: "Gold", symbol: "GOLD" },
   { mint: "XszvaiXGPwvk2nwb3o9C1CX4K6zH8sez11E6uyup6fe", name: "UnitedHealth", symbol: "UNH" },
+
+  { mint: "XshPgPdXFRWB8tP1j82rebb2Q9rPgGX37RuqzohmArM", name: "Intel xStock", symbol: "INTCx" },
+  { mint: "Xsr3pdLQyXvDJBFgpR5nexCEZwXvigb8wbPYp4YoNFf", name: "Cisco", symbol: "CSCOx" },
+  { mint: "Xsnuv4omNoHozR6EEW5mXkw8Nrny5rB3jVfLqi6gKMH", name: "Eli Lilly", symbol: "LLYx" },
+
+
+  { mint: "XsqgsbXwWogGJsNcVZ3TyVouy2MbTkfCFhCGGGcQZ2p", name: "Visa", symbol: "Vx" },
+  { mint: "XsHtf5RpxsQ7jeJ9ivNewouZKJHbPxhPoEy6yYvULr7", name: "Abbott", symbol: "ABTx" },
+  { mint: "XsgSaSvNSqLTtFuyWPBhK9196Xb9Bbdyjj4fH3cPJGo", name: "Broadcom", symbol: "AVGOx" },
+  { mint: "PreLWGkkeqG1s4HEfFZSy9moCrJ7btsHuUtfcCeoRua", name: "KALSHI", symbol: "KALSHI" },
+  { mint: "Pre8AREmFPtoJFT8mQSXQLh56cwJmM7CFDRuoGBZiUP", name: "POLYMARKET", symbol: "POLYMARKET" },
+  { mint: "keybg184d4vyXeQdFqs4o99YsMg7xBthxTJ6Ky3ondo", name: "Taiwan Semiconductor Manufacturing", symbol: "TSMon" },
+  { mint: "aLDdFsr3VTUQaHFK6yNvQxztvxQ8nxW4AMuSGC7ondo", name: "Figma", symbol: "FIGon" },
+  { mint: "XsNNMt7WTNA2sV3jrb1NNfNgapxRF5i4i6GcnTRRHts", name: "Chevron", symbol: "CVXx" },
+
+  { mint: "Xsf9mBktVB9BSU5kf4nHxPq5hCBJ2j2ui3ecFGxPRGc", name: "Gamestop", symbol: "GMEx" },
+  { mint: "Xs5UJzmCRQ8DWZjskExdSQDnbE6iLkRu2jjrRAB1JSU", name: "Accenture", symbol: "ACNx" },
+  { mint: "a2cXfonVgQ6cKB4Lm8YZsPry39VZSA562bwmRSiondo", name: "Snap", symbol: "SNAPon" },
+
+  { mint: "jzCvs2Pk8tDcfsFRqnEMjurgaQW4iQfEkandUR8ondo", name: "Spotify", symbol: "SPOTon" },
+  { mint: "ivdDracs2s7jCP698dJXKSEQdVrNj9hasJL1Uq1ondo", name: "Shopify", symbol: "SHOPon" },
+  { mint: "XsGVi5eo1Dh2zUpic4qACcjuWGjNv8GCt3dm5XcX6Dn", name: "Johnson & Johnson", symbol: "JNJx" },
 ];
 
 export const US_STOCK_MINTS = US_STOCK_TOKENS.map((t) => t.mint);

@@ -35,11 +35,13 @@ const SendWallet = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const [sponsorshipMessage, setSponsorshipMessage] = useState<string | null>(null);
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setError(null);
     setSuccess(null);
+    setSponsorshipMessage(null);
 
     if (!amount || Number(amount) <= 0) {
       setError("Please enter a valid amount.");
@@ -107,6 +109,13 @@ const SendWallet = () => {
         if (!eligibility.allowed) {
           setError(eligibility.reason || "Transaction not allowed at this time.");
           return;
+        }
+
+        if (eligibility.sponsorshipAllowed === false) {
+          setSponsorshipMessage(
+            eligibility.reason ||
+              "This amount is above the limit for gas sponsorship. Network fees will be paid from your wallet.",
+          );
         }
       } catch (eligibilityError) {
         console.error("Eligibility check error:", eligibilityError);
@@ -290,6 +299,10 @@ const SendWallet = () => {
                 </Select>
               </div>
             </div>
+
+            {sponsorshipMessage && !error && (
+              <p className="text-sm text-amber-500">{sponsorshipMessage}</p>
+            )}
 
             {error && (
               <p className="text-sm text-red-500">{error}</p>
