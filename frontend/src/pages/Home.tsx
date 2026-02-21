@@ -56,6 +56,16 @@ interface SavingsActivityRow {
   createdAt: string;
 }
 
+const formatVaultLabel = (value: string): string => {
+  if (value === "lulo_vault_regular") {
+    return "Regular savings vault";
+  }
+  if (value === "lulo_vault_protected") {
+    return "Protected savings vault";
+  }
+  return value;
+};
+
 const Home = () => {
   const { ready, authenticated, user } = usePrivy();
   const { wallets, ready: walletsReady } = useWallets();
@@ -518,10 +528,10 @@ const Home = () => {
                               </div>
                               <div className="text-xs text-muted-foreground break-all">
                                 <div>
-                                  <span className="font-medium">From:</span> {tx.fromAddress}
+                                  <span className="font-medium">From:</span> {formatVaultLabel(tx.fromAddress)}
                                 </div>
                                 <div>
-                                  <span className="font-medium">To:</span> {tx.toAddress}
+                                  <span className="font-medium">To:</span> {formatVaultLabel(tx.toAddress)}
                                 </div>
                               </div>
                             </div>

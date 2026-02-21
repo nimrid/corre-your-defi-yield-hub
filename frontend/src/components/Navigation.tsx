@@ -14,7 +14,12 @@ const Navigation = () => {
         <div className="flex justify-between items-center h-16">
           <a href="/" className="flex items-center space-x-2">
             <img src="/corre_logo.png" alt="Corre" className="w-8 h-8" />
-            <span className="text-xl font-bold">Corre</span>
+            <div className="flex items-center gap-2">
+              <span className="text-xl font-bold">Corre</span>
+              <span className="text-[10px] uppercase tracking-wide px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-400 border border-amber-500/40">
+                Beta
+              </span>
+            </div>
           </a>
           
           {/* Desktop Navigation */}

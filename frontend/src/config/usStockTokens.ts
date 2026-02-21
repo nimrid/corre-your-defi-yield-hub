@@ -24,18 +24,18 @@ export const US_STOCK_TOKENS: USStockTokenConfig[] = [
   { mint: "Xs6B6zawENwAbWVi7w92rjazLuAr5Az59qgWKcNb45x", name: "Berkshire", symbol: "BRK" },
   { mint: "Xs8drBWy3Sd5QY3aifG9kt9KFs2K3PGZmx7jWrsrk57", name: "Thermo Fisher", symbol: "TMO" },
   { mint: "XsaBXg8dU5cPM6ehmVctMkVqoiRG2ZjMo1cyBJ3AykQ", name: "Coca-Cola", symbol: "KO" },
-  { mint: "XsYdjDjNUygZ7yGKfQaB6TxLh2gC6RRjzLtLAGJrhzV", name: "Procter & Gamble", symbol: "PG" },
+  { mint: "GZ8v4NdSG7CTRZqHMgNsTPRULeVi8CpdWd9wZY8ondo", name: "Procter & Gamble", symbol: "PGon" },
   { mint: "XsjFwUPiLofddX5cWFHW35GCbXcSu1BCUGfxoQAQjeL", name: "Oracle", symbol: "ORCL" },
   { mint: "Xs3ZFkPYT2BN7qBMqf1j1bfTeTm1rFzEFSsQ1z3wAKU", name: "Unknown", symbol: "STOCK" },
   { mint: "Xsv9hRk1z5ystj9MhnA7Lq4vjSsLwzL2nxrwmwtD3re", name: "Gold", symbol: "GOLD" },
   { mint: "XszvaiXGPwvk2nwb3o9C1CX4K6zH8sez11E6uyup6fe", name: "UnitedHealth", symbol: "UNH" },
 
-  { mint: "XshPgPdXFRWB8tP1j82rebb2Q9rPgGX37RuqzohmArM", name: "Intel xStock", symbol: "INTCx" },
+  { mint: "cJpUMp5R7rZ6fGeLHbHhrRuJzK9mkyKDjZqNpT3ondo", name: "Intel Stock", symbol: "INTCon" },
   { mint: "Xsr3pdLQyXvDJBFgpR5nexCEZwXvigb8wbPYp4YoNFf", name: "Cisco", symbol: "CSCOx" },
   { mint: "Xsnuv4omNoHozR6EEW5mXkw8Nrny5rB3jVfLqi6gKMH", name: "Eli Lilly", symbol: "LLYx" },
 
-
-  { mint: "XsqgsbXwWogGJsNcVZ3TyVouy2MbTkfCFhCGGGcQZ2p", name: "Visa", symbol: "Vx" },
+  { mint: "g646pcdG2Rt5DH9WZzL7VVnVDWCCMTTrnktwE74ondo", name: "NIKE", symbol: "NKEon" },
+  { mint: "XsqgsbXwWogGJsNcVZ3TyVouy2MbTkfCFhCGGGcQZ2p", name: "Visa", symbol: "VONVUSD" },
   { mint: "XsHtf5RpxsQ7jeJ9ivNewouZKJHbPxhPoEy6yYvULr7", name: "Abbott", symbol: "ABTx" },
   { mint: "XsgSaSvNSqLTtFuyWPBhK9196Xb9Bbdyjj4fH3cPJGo", name: "Broadcom", symbol: "AVGOx" },
   { mint: "PreLWGkkeqG1s4HEfFZSy9moCrJ7btsHuUtfcCeoRua", name: "KALSHI", symbol: "KALSHI" },
@@ -50,7 +50,9 @@ export const US_STOCK_TOKENS: USStockTokenConfig[] = [
 
   { mint: "jzCvs2Pk8tDcfsFRqnEMjurgaQW4iQfEkandUR8ondo", name: "Spotify", symbol: "SPOTon" },
   { mint: "ivdDracs2s7jCP698dJXKSEQdVrNj9hasJL1Uq1ondo", name: "Shopify", symbol: "SHOPon" },
-  { mint: "XsGVi5eo1Dh2zUpic4qACcjuWGjNv8GCt3dm5XcX6Dn", name: "Johnson & Johnson", symbol: "JNJx" },
+  { mint: "KUXt7LzHWSQXp5eyqMZRxWjAP6yM8BUh4LRHwiwondo", name: "Johnson & Johnson", symbol: "JNJon" },
+  { mint: "XsApJFV9MAktqnAc6jqzsHVujxkGm9xcSUffaBoYLKC", name: "Mastercard", symbol: "MA" },
+
 ];
 
 export const US_STOCK_MINTS = US_STOCK_TOKENS.map((t) => t.mint);

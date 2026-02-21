@@ -10,6 +10,11 @@ export default defineConfig(({ mode }) => ({
     host: "::",
     port: 8080,
   },
+  build: {
+    // Raise the warning threshold for chunk size (in kB) to reduce noise.
+    // This does not change the actual bundling behavior.
+    chunkSizeWarningLimit: 2500,
+  },
   plugins: [
     react(),
     mode === "development" && componentTagger(),
