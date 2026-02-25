@@ -1,51 +1,50 @@
 <!doctype html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="theme-color" content="#7C3AED" />
-    <title>Corre - Earn DeFi Yields & Invest in Capital Markets</title>
 
-    <script src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js" defer></script>
-    <script>
-      window.OneSignalDeferred = window.OneSignalDeferred || [];
-      OneSignalDeferred.push(async function(OneSignal) {
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#7C3AED" />
+  <title>Corre - Earn DeFi Yields & Invest in Capital Markets</title>
+
+  <script src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js" defer></script>
+  <script>
+    window.OneSignalDeferred = window.OneSignalDeferred || [];
+    OneSignalDeferred.push(async function (OneSignal) {
+      if (window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
         await OneSignal.init({
-        appId: "6db63984-2037-4eef-a6bb-9c4a349d3943",
-       allowLocalhostAsSecureOrigin: true,
-      });
+          appId: "6db63984-2037-4eef-a6bb-9c4a349d3943",
+          allowLocalhostAsSecureOrigin: true,
+        });
+      }
     });
-   </script>
+  </script>
 
-    <meta name="description" content="Bridge DeFi and traditional finance. Earn yields and invest your USDC in stocks and bonds with Corre." />
-    <meta name="author" content="Corre" />
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <meta name="description"
+    content="Bridge DeFi and traditional finance. Earn yields and invest your USDC in stocks and bonds with Corre." />
+  <meta name="author" content="Corre" />
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 
-    <meta property="og:title" content="Corre - Earn DeFi Yields & Invest in Capital Markets" />
-    <meta property="og:description" content="Bridge DeFi and traditional finance. Earn yields and invest your USDC in stocks and bonds with Corre." />
-    <meta property="og:type" content="website" />
-    <meta property="og:image" content="https://hefafnsdx7xk1nzg.public.blob.vercel-storage.com/corre_logo_preview.png" />
+  <meta property="og:title" content="Corre - Earn DeFi Yields & Invest in Capital Markets" />
+  <meta property="og:description"
+    content="Bridge DeFi and traditional finance. Earn yields and invest your USDC in stocks and bonds with Corre." />
+  <meta property="og:type" content="website" />
+  <meta property="og:image" content="https://hefafnsdx7xk1nzg.public.blob.vercel-storage.com/corre_logo_preview.png" />
 
-    <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:site" content="Corre" />
-    <meta name="twitter:image" content="https://hefafnsdx7xk1nzg.public.blob.vercel-storage.com/corre_logo_preview.png" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:site" content="Corre" />
+  <meta name="twitter:image" content="https://hefafnsdx7xk1nzg.public.blob.vercel-storage.com/corre_logo_preview.png" />
 
-    <link rel="manifest" href="/manifest.webmanifest" />
-    <link
-      rel="icon"
-      type="image/png"
-      href="/corre_logo.png"
-    />
-    <link
-      rel="apple-touch-icon"
-      href="/corre_logo.png"
-    />
-  </head>
+  <link rel="manifest" href="/manifest.webmanifest" />
+  <link rel="icon" type="image/png" href="/corre_logo.png" />
+  <link rel="apple-touch-icon" href="/corre_logo.png" />
+</head>
 
-  <body>
-    <div id="root"></div>
-    <script type="module" src="/src/main.tsx"></script>
-  </body>
+<body>
+  <div id="root"></div>
+  <script type="module" src="/src/main.tsx"></script>
+</body>
+
 </html>

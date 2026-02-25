@@ -11,4 +11,5 @@ export interface UserInput {
   email?: string | null;
   name?: string | null;
   wallets: WalletInput[];
+  referredByCode?: string | null;
 }

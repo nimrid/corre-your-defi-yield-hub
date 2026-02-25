@@ -2,9 +2,17 @@ import Navigation from "@/components/Navigation";
 import { usePrivy, useWallets } from "@privy-io/react-auth";
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Copy, ChevronDown } from "lucide-react";
+import { Copy, ChevronDown, QrCode } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { US_STOCK_TOKENS } from "@/config/usStockTokens";
+import { QRCodeSVG } from "qrcode.react";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 
 const API_BASE_URL =
   import.meta.env.VITE_BACKEND_URL ||
@@ -140,6 +148,7 @@ const Home = () => {
           email: user.email?.address ?? null,
           name: user.google?.name ?? null,
           wallets: [...linkedSolana, ...linkedEthereum],
+          referredByCode: localStorage.getItem("referredByCode"),
         };
 
         await fetch(`${API_BASE_URL}/users/upsert`, {
@@ -883,6 +892,39 @@ const TotalBalance = ({ wallets }: { wallets: any[] }) => {
 
 export default Home;
 
+const WalletQRDialog = ({ address, label }: { address: string; label: string }) => {
+  return (
+    <Dialog>
+      <DialogTrigger asChild>
+        <button
+          type="button"
+          className="p-1 rounded hover:bg-secondary focus:outline-none focus:ring-2 focus:ring-primary"
+          title="Show QR Code"
+        >
+          <QrCode className="w-4 h-4" />
+        </button>
+      </DialogTrigger>
+      <DialogContent className="sm:max-w-md flex flex-col items-center">
+        <DialogHeader className="w-full">
+          <DialogTitle className="text-center">{label} QR Code</DialogTitle>
+        </DialogHeader>
+        <div className="bg-white p-4 rounded-xl mt-4">
+          <QRCodeSVG value={address} size={256} level="H" />
+        </div>
+        <p className="mt-4 font-mono text-xs text-center break-all text-muted-foreground max-w-xs">
+          {address}
+        </p>
+        <Button
+          className="mt-4 w-full"
+          onClick={() => navigator.clipboard.writeText(address)}
+        >
+          Copy Address
+        </Button>
+      </DialogContent>
+    </Dialog>
+  );
+};
+
 const WalletRow = ({ wallet }: { wallet: any }) => {
   const [resolvedAddress, setResolvedAddress] = useState<string | undefined>(wallet.address);
 
@@ -897,11 +939,11 @@ const WalletRow = ({ wallet }: { wallet: any }) => {
             return;
           }
         }
-      } catch {}
+      } catch { }
       // Fallbacks
       try {
         if (mounted && wallet.address) setResolvedAddress(wallet.address);
-      } catch {}
+      } catch { }
     };
     resolve();
     return () => { mounted = false; };
@@ -914,13 +956,17 @@ const WalletRow = ({ wallet }: { wallet: any }) => {
         <div className="flex items-center gap-2">
           <p className="font-mono break-all">{resolvedAddress ?? 'Resolving address...'}</p>
           {resolvedAddress && (
-            <button
-              type="button"
-              onClick={() => navigator.clipboard.writeText(resolvedAddress).catch(() => {})}
-              className="p-1 rounded hover:bg-secondary focus:outline-none focus:ring-2 focus:ring-primary"
-            >
-              <Copy className="w-4 h-4" />
-            </button>
+            <>
+              <button
+                type="button"
+                onClick={() => navigator.clipboard.writeText(resolvedAddress).catch(() => { })}
+                className="p-1 rounded hover:bg-secondary focus:outline-none focus:ring-2 focus:ring-primary"
+                title="Copy Address"
+              >
+                <Copy className="w-4 h-4" />
+              </button>
+              <WalletQRDialog address={resolvedAddress} label={wallet.walletClientType} />
+            </>
           )}
         </div>
       </div>
@@ -939,13 +985,17 @@ const LinkedWalletRow = ({ account }: { account: any }) => {
         <div className="flex items-center gap-2">
           <p className="font-mono break-all">{address ?? "Unknown address"}</p>
           {address && (
-            <button
-              type="button"
-              onClick={() => navigator.clipboard.writeText(address).catch(() => {})}
-              className="p-1 rounded hover:bg-secondary focus:outline-none focus:ring-2 focus:ring-primary"
-            >
-              <Copy className="w-4 h-4" />
-            </button>
+            <>
+              <button
+                type="button"
+                onClick={() => navigator.clipboard.writeText(address).catch(() => { })}
+                className="p-1 rounded hover:bg-secondary focus:outline-none focus:ring-2 focus:ring-primary"
+                title="Copy Address"
+              >
+                <Copy className="w-4 h-4" />
+              </button>
+              <WalletQRDialog address={address} label="Linked Wallet" />
+            </>
           )}
         </div>
       </div>

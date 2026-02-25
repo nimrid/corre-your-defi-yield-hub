@@ -144,10 +144,45 @@ app.use("/api/webhooks", privyWebhookRoutes);
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       )`,
     );
+
+    // Referral System Migrations
+    await pool.query(
+      `ALTER TABLE users 
+       ADD COLUMN IF NOT EXISTS referral_code TEXT UNIQUE,
+       ADD COLUMN IF NOT EXISTS referred_by_id INTEGER REFERENCES users(id)`
+    );
+
+    // Create index for referral lookups
+    await pool.query(
+      `CREATE INDEX IF NOT EXISTS idx_users_referral_code ON users(referral_code)`
+    );
   } catch (err) {
-    console.error("Error ensuring pending_withdrawals table", err);
+    console.error("Error ensuring tables and columns", err);
   }
 })();
+
+/**
+ * Generate a unique referral code
+ */
+async function generateReferralCode(): Promise<string> {
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // Removed similar looking chars
+  let code = "";
+  let isUnique = false;
+
+  while (!isUnique) {
+    code = "";
+    for (let i = 0; i < 8; i++) {
+      code += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+
+    const { rows } = await pool.query("SELECT 1 FROM users WHERE referral_code = $1", [code]);
+    if (rows.length === 0) {
+      isUnique = true;
+    }
+  }
+
+  return code;
+}
 
 app.get("/health", (_req, res) => {
   res.json({ status: "ok" });
@@ -805,13 +840,44 @@ app.post("/users/upsert", async (req, res) => {
   try {
     await client.query("BEGIN");
 
+    let referredById: number | null = null;
+    if (body.referredByCode) {
+      const referrerResult = await client.query(
+        "SELECT id FROM users WHERE referral_code = $1",
+        [body.referredByCode]
+      );
+      if (referrerResult.rows.length > 0) {
+        referredById = referrerResult.rows[0].id;
+      }
+    }
+
+    // Check if user exists and has a referral code
+    const existingUser = await client.query(
+      "SELECT id, referral_code FROM users WHERE privy_user_id = $1",
+      [body.privyUserId]
+    );
+
+    let referralCode = existingUser.rows[0]?.referral_code;
+    if (!referralCode) {
+      referralCode = await generateReferralCode();
+    }
+
     const userResult = await client.query(
-      `INSERT INTO users (privy_user_id, email, name)
-       VALUES ($1, $2, $3)
+      `INSERT INTO users (privy_user_id, email, name, referral_code, referred_by_id)
+       VALUES ($1, $2, $3, $4, $5)
        ON CONFLICT (privy_user_id)
-       DO UPDATE SET email = EXCLUDED.email, name = EXCLUDED.name
+       DO UPDATE SET 
+         email = EXCLUDED.email, 
+         name = EXCLUDED.name,
+         referral_code = COALESCE(users.referral_code, EXCLUDED.referral_code)
        RETURNING id`,
-      [body.privyUserId, body.email ?? null, body.name ?? null],
+      [
+        body.privyUserId,
+        body.email ?? null,
+        body.name ?? null,
+        referralCode,
+        referredById,
+      ],
     );
 
     const userId: number = userResult.rows[0].id;
@@ -837,6 +903,37 @@ app.post("/users/upsert", async (req, res) => {
     return res.status(500).json({ error: "Internal server error" });
   } finally {
     client.release();
+  }
+});
+
+// Get referral data for a user
+app.get("/users/:privyUserId/referral", async (req, res) => {
+  const { privyUserId } = req.params;
+
+  try {
+    const userResult = await pool.query(
+      "SELECT id, referral_code FROM users WHERE privy_user_id = $1",
+      [privyUserId]
+    );
+
+    if (userResult.rows.length === 0) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    const { id, referral_code } = userResult.rows[0];
+
+    const referralsCountResult = await pool.query(
+      "SELECT COUNT(*) FROM users WHERE referred_by_id = $1",
+      [id]
+    );
+
+    return res.json({
+      referralCode: referral_code,
+      referralsCount: parseInt(referralsCountResult.rows[0].count),
+    });
+  } catch (err) {
+    console.error("Error fetching referral data:", err);
+    return res.status(500).json({ error: "Internal server error" });
   }
 });
 
