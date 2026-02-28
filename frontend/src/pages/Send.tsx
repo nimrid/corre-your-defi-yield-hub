@@ -33,7 +33,7 @@ const Send = () => {
           >
             <h2 className="text-xl font-semibold mb-2">Send to wallet</h2>
             <p className="text-sm text-muted-foreground">
-              Transfer USDC to another crypto wallet address.
+              Transfer SOL or USDC to another crypto wallet address.
             </p>
           </button>
           <button

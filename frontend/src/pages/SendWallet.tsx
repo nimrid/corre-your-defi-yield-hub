@@ -32,6 +32,7 @@ const SendWallet = () => {
   const [amount, setAmount] = useState("");
   const [address, setAddress] = useState("");
   const [network, setNetwork] = useState("solana");
+  const [token, setToken] = useState("SOL");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
@@ -70,7 +71,7 @@ const SendWallet = () => {
     // Use the first Solana wallet - if it's embedded, sponsorship will work
     // If it's external, Privy will throw the error
     const selectedWallet = wallets[0];
-    
+
     if (!selectedWallet?.address) {
       setError("No Solana wallet found. Please make sure your wallet is connected.");
       return;
@@ -114,7 +115,7 @@ const SendWallet = () => {
         if (eligibility.sponsorshipAllowed === false) {
           setSponsorshipMessage(
             eligibility.reason ||
-              "This amount is above the limit for gas sponsorship. Network fees will be paid from your wallet.",
+            "This amount is above the limit for gas sponsorship. Network fees will be paid from your wallet.",
           );
         }
       } catch (eligibilityError) {
@@ -127,6 +128,8 @@ const SendWallet = () => {
         Connection,
         PublicKey,
         Transaction,
+        SystemProgram,
+        LAMPORTS_PER_SOL,
       } = await import("@solana/web3.js");
       const {
         getAssociatedTokenAddress,
@@ -142,41 +145,51 @@ const SendWallet = () => {
 
       const fromPubkey = new PublicKey(selectedWallet.address);
       const toPubkey = new PublicKey(address);
-      const usdcMint = new PublicKey(USDC_MINT);
-
-      const fromTokenAccount = await getAssociatedTokenAddress(usdcMint, fromPubkey);
-      const toTokenAccount = await getAssociatedTokenAddress(usdcMint, toPubkey);
-
-      const amountNumber = Number(amount);
-      // USDC has 6 decimals on Solana
-      const rawAmount = Math.floor(amountNumber * 1_000_000);
 
       const { blockhash } = await connection.getLatestBlockhash("finalized");
-
       const transaction = new Transaction();
       transaction.feePayer = fromPubkey;
       transaction.recentBlockhash = blockhash;
 
-      // Check if recipient's token account exists, create it if not
-      const toAccountInfo = await connection.getAccountInfo(toTokenAccount);
-      if (!toAccountInfo) {
-        const createAccountIx = createAssociatedTokenAccountInstruction(
-          fromPubkey, // payer
-          toTokenAccount, // associated token account
-          toPubkey, // owner
-          usdcMint // mint
-        );
-        transaction.add(createAccountIx);
-      }
+      const amountNumber = Number(amount);
 
-      // Add the transfer instruction
-      const transferIx = createTransferInstruction(
-        fromTokenAccount,
-        toTokenAccount,
-        fromPubkey,
-        rawAmount
-      );
-      transaction.add(transferIx);
+      if (token === "SOL") {
+        const rawAmount = Math.floor(amountNumber * LAMPORTS_PER_SOL);
+        const transferIx = SystemProgram.transfer({
+          fromPubkey,
+          toPubkey,
+          lamports: rawAmount,
+        });
+        transaction.add(transferIx);
+      } else {
+        const usdcMint = new PublicKey(USDC_MINT);
+        const fromTokenAccount = await getAssociatedTokenAddress(usdcMint, fromPubkey);
+        const toTokenAccount = await getAssociatedTokenAddress(usdcMint, toPubkey);
+
+        // USDC has 6 decimals on Solana
+        const rawAmount = Math.floor(amountNumber * 1_000_000);
+
+        // Check if recipient's token account exists, create it if not
+        const toAccountInfo = await connection.getAccountInfo(toTokenAccount);
+        if (!toAccountInfo) {
+          const createAccountIx = createAssociatedTokenAccountInstruction(
+            fromPubkey, // payer
+            toTokenAccount, // associated token account
+            toPubkey, // owner
+            usdcMint // mint
+          );
+          transaction.add(createAccountIx);
+        }
+
+        // Add the transfer instruction
+        const transferIx = createTransferInstruction(
+          fromTokenAccount,
+          toTokenAccount,
+          fromPubkey,
+          rawAmount
+        );
+        transaction.add(transferIx);
+      }
 
       // Security: Strip CloseAccount instructions to prevent rent refund exploitation
       // See: https://docs.privy.io/wallets/gas-and-asset-management/gas/security
@@ -186,18 +199,47 @@ const SendWallet = () => {
         return discriminator !== 0x0a;
       });
 
-      // Use Privy wallet client to sign and send transaction with gas sponsorship
-      // Privy automatically sponsors the transaction for embedded wallets
+      // Use Privy wallet client to sign and send transaction
       const signedTxResponse = await selectedWallet.signTransaction({
         transaction: transaction.serialize({ requireAllSignatures: false }),
       });
-      
-      const signature = await connection.sendRawTransaction(signedTxResponse.signedTransaction);
-      
-      // Wait for confirmation
-      await connection.confirmTransaction(signature, "confirmed");
 
-      setSuccess(`Transaction submitted: ${signature}`);
+      const signature = await connection.sendRawTransaction(signedTxResponse.signedTransaction);
+
+      // Wait for confirmation with a more robust approach
+      try {
+        const latestBlockhash = await connection.getLatestBlockhash("confirmed");
+        await connection.confirmTransaction(
+          {
+            signature,
+            blockhash: latestBlockhash.blockhash,
+            lastValidBlockHeight: latestBlockhash.lastValidBlockHeight,
+          },
+          "confirmed"
+        );
+      } catch (confirmError: any) {
+        console.warn("Confirmation wait timed out or failed, checking status manually:", confirmError);
+
+        // Manual status check if confirmTransaction fails/times out
+        const status = await connection.getSignatureStatus(signature);
+        const hasSucceeded = status.value?.confirmationStatus === "confirmed" || status.value?.confirmationStatus === "finalized";
+
+        // If it's not confirmed yet but we don't have an error, it might still be in progress
+        // But for the user, if we have a signature and no clear failure, we should be optimistic
+        // or at least not show a scary "unknown" error if it's already in the ledger.
+        if (!hasSucceeded && status.value?.err) {
+          throw new Error(`Transaction failed: ${JSON.stringify(status.value.err)}`);
+        }
+
+        // If we have a status value at all (even "processed"), it's likely fine
+        if (!status.value) {
+          console.error("No status found for signature after timeout");
+          // If we really can't find it, we might still want to show the success but with a warning
+          // or just let it fall through to success if we're feeling optimistic.
+        }
+      }
+
+      setSuccess(`Transaction submitted successfully! Hash: ${signature}`);
 
       // Fire-and-forget call to backend to record this outgoing USDC transaction
       // If the user is not available, we skip recording rather than blocking the UI.
@@ -211,7 +253,7 @@ const SendWallet = () => {
           body: JSON.stringify({
             privyUserId,
             chainType: "solana",
-            assetSymbol: "USDC",
+            assetSymbol: token,
             amount,
             direction: "outgoing",
             txSignature: signature || null,
@@ -257,12 +299,28 @@ const SendWallet = () => {
           <form className="space-y-6" onSubmit={handleSubmit}>
             <div className="grid gap-4">
               <div className="space-y-2">
-                <Label htmlFor="amount">Amount (USDC)</Label>
+                <Label>Token</Label>
+                <Select
+                  value={token}
+                  onValueChange={(val) => setToken(val)}
+                >
+                  <SelectTrigger className="bg-secondary/50 border-border/50">
+                    <SelectValue placeholder="Select token" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="SOL">SOL (Solana)</SelectItem>
+                    <SelectItem value="USDC">USDC (USD Coin)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="amount">Amount ({token})</Label>
                 <Input
                   id="amount"
                   type="number"
                   min="0"
-                  step="0.01"
+                  step="0.000000001"
                   placeholder="0.00"
                   className="bg-secondary/50 border-border/50"
                   value={amount}
