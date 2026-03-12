@@ -85,7 +85,7 @@ const Save = () => {
               Save
             </h1>
             <p className="text-sm text-muted-foreground">
-              Available saving options powered by Lulo.
+              Available saving options to earn yields.
             </p>
           </div>
 
