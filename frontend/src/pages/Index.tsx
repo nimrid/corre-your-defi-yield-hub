@@ -1,5 +1,6 @@
 import Navigation from "@/components/Navigation";
 import Hero from "@/components/Hero";
+import LandingYieldEstimator from "@/components/LandingYieldEstimator";
 import Features from "@/components/Features";
 import Footer from "@/components/Footer";
 import { usePrivy } from "@privy-io/react-auth";
@@ -21,6 +22,7 @@ const Index = () => {
       <Navigation />
       <main>
         <Hero />
+        <LandingYieldEstimator />
         <Features />
       </main>
       <Footer />

@@ -1,5 +1,6 @@
 import Navigation from "@/components/Navigation";
 import StockHeatmapWidget from "@/components/StockHeatmapWidget";
+import StockAdvisor from "@/components/StockAdvisor";
 import { ArrowLeft, Grid3X3 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
@@ -58,13 +59,13 @@ const InvestUSStocks = () => {
         const data: any = await res.json();
         const items: TokenItem[] = Array.isArray(data)
           ? data.map((t: any) => ({
-              id: t.id ?? t.address, // mint identifier
-              address: t.address,
-              name: t.name,
-              symbol: t.symbol,
-              icon: t.icon ?? null,
-              usdPrice: typeof t.usdPrice === "number" ? t.usdPrice : null,
-            }))
+            id: t.id ?? t.address, // mint identifier
+            address: t.address,
+            name: t.name,
+            symbol: t.symbol,
+            icon: t.icon ?? null,
+            usdPrice: typeof t.usdPrice === "number" ? t.usdPrice : null,
+          }))
           : [];
 
         setTokens(items);
@@ -122,6 +123,8 @@ const InvestUSStocks = () => {
               Browse tokenized US stocks available on Solana.
             </p>
           </div>
+
+          <StockAdvisor />
 
           {loading && (
             <p className="text-sm text-muted-foreground">Loading US stocks...</p>
