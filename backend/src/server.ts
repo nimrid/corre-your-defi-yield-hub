@@ -6,6 +6,8 @@ import type { TransactionInput } from "./models/transaction";
 import africaRoutes from "./routes/africaRoutes.js";
 import heliusWebhookRoutes from "./routes/heliusWebhook.js";
 import privyWebhookRoutes from "./routes/privyWebhook.js";
+import pajOfframpWebhookRoutes from "./routes/pajOfframpWebhook.js";
+import pajOnrampWebhookRoutes from "./routes/pajOnrampWebhook.js";
 import {
   checkGasSponsorshipEligibility,
   detectSuspiciousPatterns,
@@ -16,7 +18,55 @@ import {
 const app = express();
 const port = process.env.PORT || 4000;
 
-app.use(cors());
+const ALLOWED_ORIGINS = [
+  // Local development
+  "http://localhost:3000",
+  "http://localhost:4000",
+  "http://localhost:5173",
+  "http://localhost:8080",
+  // ngrok tunnel (update substring if your subdomain changes, or widen the regex)
+  "https://incongrously-beetlike-anabel.ngrok-free.dev",
+  // Production frontend (add your real domain here once deployed)
+  "https://defi-corre.onrender.com",
+];
+
+app.use(
+  cors({
+    origin: (origin, callback) => {
+      // Allow server-to-server requests (no origin header) and all listed origins
+      if (!origin || ALLOWED_ORIGINS.includes(origin)) {
+        callback(null, true);
+      } else {
+        console.warn(`[CORS] Blocked request from origin: ${origin}`);
+        callback(new Error(`CORS: origin ${origin} not allowed`));
+      }
+    },
+    credentials: true,
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allowedHeaders: [
+      "Content-Type",
+      "Authorization",
+      // Svix webhook verification headers
+      "svix-id",
+      "svix-timestamp",
+      "svix-signature",
+      // ngrok browser warning bypass
+      "ngrok-skip-browser-warning",
+    ],
+  })
+);
+
+// Handle preflight requests for all routes
+app.options("*", cors());
+
+
+// ⚠️  Mount the Privy webhook route BEFORE express.json().
+// The route uses express.raw() internally to capture the raw body for
+// Svix signature verification. If express.json() runs first the raw
+// Buffer is lost and signature verification will always fail.
+app.use("/api/webhooks", privyWebhookRoutes);
+
+// Global JSON body parser — applies to all other routes
 app.use(express.json());
 
 // Mount Africa-specific routes
@@ -25,8 +75,11 @@ app.use("/fonbnk/africa", africaRoutes);
 // Mount Helius webhook routes
 app.use("/api/webhooks", heliusWebhookRoutes);
 
-// Mount Privy webhook routes
-app.use("/api/webhooks", privyWebhookRoutes);
+// Mount PAJ off-ramp webhook routes
+app.use("/api/webhooks", pajOfframpWebhookRoutes);
+
+// Mount PAJ on-ramp webhook routes
+app.use("/api/webhooks", pajOnrampWebhookRoutes);
 
 (async () => {
   try {
@@ -155,6 +208,57 @@ app.use("/api/webhooks", privyWebhookRoutes);
     // Create index for referral lookups
     await pool.query(
       `CREATE INDEX IF NOT EXISTS idx_users_referral_code ON users(referral_code)`
+    );
+
+    // PAJ off-ramp orders — stores all status updates from the PAJ webhook
+    await pool.query(
+      `CREATE TABLE IF NOT EXISTS paj_offramp_orders (
+        id             TEXT PRIMARY KEY,
+        account_number TEXT NOT NULL DEFAULT '',
+        bank           TEXT NOT NULL DEFAULT '',
+        currency       TEXT NOT NULL DEFAULT 'NGN',
+        amount_usdc    NUMERIC NOT NULL DEFAULT 0,
+        amount_fiat    NUMERIC,
+        rate           NUMERIC,
+        fee            NUMERIC,
+        status         TEXT NOT NULL DEFAULT 'INIT',
+        raw_payload    JSONB,
+        created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at     TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )`
+    );
+
+    await pool.query(
+      `CREATE INDEX IF NOT EXISTS idx_paj_offramp_orders_status ON paj_offramp_orders(status, updated_at DESC)`
+    );
+
+    // PAJ on-ramp orders — stores all status updates from the PAJ onramp webhook
+    await pool.query(
+      `CREATE TABLE IF NOT EXISTS paj_onramp_orders (
+        id             TEXT PRIMARY KEY,
+        account_number TEXT NOT NULL DEFAULT '',
+        account_name   TEXT NOT NULL DEFAULT '',
+        bank           TEXT NOT NULL DEFAULT '',
+        currency       TEXT NOT NULL DEFAULT 'NGN',
+        amount_usdc    NUMERIC NOT NULL DEFAULT 0,
+        amount_fiat    NUMERIC,
+        mint           TEXT NOT NULL DEFAULT '',
+        recipient      TEXT NOT NULL DEFAULT '',
+        chain          TEXT NOT NULL DEFAULT 'SOLANA',
+        rate           NUMERIC,
+        status         TEXT NOT NULL DEFAULT 'INIT',
+        raw_payload    JSONB,
+        created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at     TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )`
+    );
+
+    await pool.query(
+      `CREATE INDEX IF NOT EXISTS idx_paj_onramp_orders_status ON paj_onramp_orders(status, updated_at DESC)`
+    );
+
+    await pool.query(
+      `CREATE INDEX IF NOT EXISTS idx_paj_onramp_orders_recipient ON paj_onramp_orders(recipient, updated_at DESC)`
     );
   } catch (err) {
     console.error("Error ensuring tables and columns", err);

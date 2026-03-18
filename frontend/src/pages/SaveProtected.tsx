@@ -7,10 +7,7 @@ import { FormEvent, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { usePrivy } from "@privy-io/react-auth";
 import { useSignAndSendTransaction, useWallets as useSolanaWallets } from "@privy-io/react-auth/solana";
-
-const API_BASE_URL =
-  import.meta.env.VITE_BACKEND_URL ||
-  "http://localhost:4000";
+import { apiFetch } from "@/services/apiClient";
 
 const USDC_MINT = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
 const LULO_REFERRER = "6pZiqTT81nKLxMvQay7P6TrRx9NdWG5zbakaZdQoWoUb";
@@ -146,7 +143,7 @@ const SaveProtected = () => {
 
       const privyUserId = user?.id;
       if (privyUserId && signature) {
-        void fetch(`${API_BASE_URL}/transactions`, {
+        void apiFetch("/transactions", {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -162,9 +159,9 @@ const SaveProtected = () => {
             toAddress: "lulo_vault_protected",
             source: "save_protected_deposit",
           }),
-        }).catch(() => {});
+        }).catch(() => { });
 
-        void fetch(`${API_BASE_URL}/savings`, {
+        void apiFetch("/savings", {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -178,7 +175,7 @@ const SaveProtected = () => {
             txSignature: signature,
             source: "save_protected_deposit",
           }),
-        }).catch(() => {});
+        }).catch(() => { });
       }
     } catch (err: any) {
       setError(err?.message ?? "Failed to deposit into vault.");
@@ -253,7 +250,7 @@ const SaveProtected = () => {
 
       const privyUserId = user?.id;
       if (privyUserId && signature) {
-        void fetch(`${API_BASE_URL}/transactions`, {
+        void apiFetch("/transactions", {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -269,9 +266,9 @@ const SaveProtected = () => {
             toAddress: owner,
             source: "save_protected_withdraw",
           }),
-        }).catch(() => {});
+        }).catch(() => { });
 
-        void fetch(`${API_BASE_URL}/savings`, {
+        void apiFetch("/savings", {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -285,7 +282,7 @@ const SaveProtected = () => {
             txSignature: signature,
             source: "save_protected_withdraw",
           }),
-        }).catch(() => {});
+        }).catch(() => { });
       }
     } catch (err: any) {
       setError(err?.message ?? "Failed to withdraw from vault.");

@@ -38,7 +38,6 @@ const SendBank = () => {
               size="lg"
               className="mt-2 inline-flex items-center gap-2 rounded-full px-5 py-2.5 text-sm font-semibold"
               onClick={() => navigate("/send/bank/africa")}
-              disabled
             >
               <BanknoteIcon className="w-4 h-4" />
               African bank off-ramp

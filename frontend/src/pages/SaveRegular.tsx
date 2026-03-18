@@ -7,10 +7,7 @@ import { FormEvent, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { usePrivy } from "@privy-io/react-auth";
 import { useSignAndSendTransaction, useWallets as useSolanaWallets } from "@privy-io/react-auth/solana";
-
-const API_BASE_URL =
-  import.meta.env.VITE_BACKEND_URL ||
-  "http://localhost:4000";
+import { apiFetch } from "@/services/apiClient";
 
 const USDC_MINT = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
 const LULO_REFERRER = "6pZiqTT81nKLxMvQay7P6TrRx9NdWG5zbakaZdQoWoUb";
@@ -101,10 +98,8 @@ const SaveRegular = () => {
         setPendingLoading(true);
         setPendingError(null);
 
-        const res = await fetch(
-          `${API_BASE_URL}/withdrawals/pending?privyUserId=${encodeURIComponent(
-            user.id,
-          )}`,
+        const res = await apiFetch(
+          `/withdrawals/pending?privyUserId=${encodeURIComponent(user.id)}`,
         );
 
         if (!res.ok) {
@@ -199,7 +194,7 @@ const SaveRegular = () => {
 
       const privyUserId = user?.id;
       if (privyUserId && signature) {
-        void fetch(`${API_BASE_URL}/transactions`, {
+        void apiFetch("/transactions", {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -215,9 +210,9 @@ const SaveRegular = () => {
             toAddress: "lulo_vault_regular",
             source: "save_regular_deposit",
           }),
-        }).catch(() => {});
+        }).catch(() => { });
 
-        void fetch(`${API_BASE_URL}/savings`, {
+        void apiFetch("/savings", {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -231,7 +226,7 @@ const SaveRegular = () => {
             txSignature: signature,
             source: "save_regular_deposit",
           }),
-        }).catch(() => {});
+        }).catch(() => { });
       }
     } catch (err: any) {
       setError(err?.message ?? "Failed to deposit into vault.");
@@ -320,15 +315,15 @@ const SaveRegular = () => {
           : "Withdraw transaction submitted.",
       );
 
-      await fetch(`${API_BASE_URL}/withdrawals/complete`, {
+      await apiFetch("/withdrawals/complete", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({ privyUserId, withdrawalId: pendingWithdrawal.withdrawalId }),
-      }).catch(() => {});
+      }).catch(() => { });
 
-      await fetch(`${API_BASE_URL}/transactions`, {
+      await apiFetch("/transactions", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -344,9 +339,9 @@ const SaveRegular = () => {
           toAddress: owner,
           source: "save_regular_withdraw",
         }),
-      }).catch(() => {});
+      }).catch(() => { });
 
-      void fetch(`${API_BASE_URL}/savings`, {
+      void apiFetch("/savings", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -360,7 +355,7 @@ const SaveRegular = () => {
           txSignature: signature,
           source: "save_regular_withdraw",
         }),
-      }).catch(() => {});
+      }).catch(() => { });
 
       setPendingWithdrawal(null);
     } catch (err: any) {
@@ -466,7 +461,7 @@ const SaveRegular = () => {
         throw new Error("User not found when recording pending withdrawal.");
       }
 
-      await fetch(`${API_BASE_URL}/withdrawals/pending`, {
+      await apiFetch("/withdrawals/pending", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -481,7 +476,7 @@ const SaveRegular = () => {
           cooldownSeconds: Number(matching.cooldownSeconds ?? 0),
           source: "save_regular_withdraw",
         }),
-      }).catch(() => {});
+      }).catch(() => { });
 
       setSuccess(
         "Withdrawal initiated. You will be able to complete it after the cooldown period.",
@@ -546,9 +541,9 @@ const SaveRegular = () => {
                   >
                     {regularDeposited !== null
                       ? `${regularDeposited.toLocaleString(undefined, {
-                          minimumFractionDigits: 2,
-                          maximumFractionDigits: 2,
-                        })} USDC`
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2,
+                      })} USDC`
                       : "-"}
                   </p>
                 </div>
@@ -564,9 +559,9 @@ const SaveRegular = () => {
                   >
                     {regularInterestEarned !== null
                       ? `${regularInterestEarned.toLocaleString(undefined, {
-                          minimumFractionDigits: 2,
-                          maximumFractionDigits: 2,
-                        })} USDC`
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2,
+                      })} USDC`
                       : "-"}
                   </p>
                 </div>
@@ -645,10 +640,10 @@ const SaveRegular = () => {
                   {loading
                     ? "Completing..."
                     : pendingWithdrawal.canComplete
-                    ? "Complete withdrawal"
-                    : "Complete (cooldown active)"}
+                      ? "Complete withdrawal"
+                      : "Complete (cooldown active)"}
                 </Button>
-            </div>
+              </div>
             )}
           </form>
         </div>

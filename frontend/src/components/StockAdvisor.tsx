@@ -2,6 +2,8 @@ import { useState } from "react";
 import { Bot, Send, AlertTriangle, ChevronDown, ChevronUp } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { fetchStockAdvice, Message } from "@/services/aiService";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 
 const STOCK_QUESTIONS = [
     "What is your primary investment goal? (e.g., retirement, short-term gains, buying a house)",
@@ -87,12 +89,20 @@ const StockAdvisor = () => {
                                     }`}
                             >
                                 <div
-                                    className={`px-4 py-2.5 rounded-2xl text-sm whitespace-pre-wrap ${msg.role === "user"
+                                    className={`px-4 py-3 rounded-2xl text-sm ${msg.role === "user"
                                         ? "bg-primary text-primary-foreground rounded-tr-sm"
                                         : "bg-secondary text-secondary-foreground rounded-tl-sm border border-border/50"
                                         }`}
                                 >
-                                    {msg.content}
+                                    {msg.role === "assistant" ? (
+                                        <div className="prose dark:prose-invert prose-sm max-w-none">
+                                            <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                                                {msg.content}
+                                            </ReactMarkdown>
+                                        </div>
+                                    ) : (
+                                        <div className="whitespace-pre-wrap">{msg.content}</div>
+                                    )}
                                 </div>
                             </div>
                         ))}

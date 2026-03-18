@@ -1,379 +1,228 @@
 import Navigation from "@/components/Navigation";
-import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { ArrowLeft, BanknoteIcon } from "lucide-react";
-import { FormEvent, useEffect, useState } from "react";
+import { ArrowLeft, Landmark, Loader2, CheckCircle2, AlertCircle, Check, ChevronsUpDown, Send, ShieldAlert } from "lucide-react";
 import { useNavigate } from "react-router-dom";
-import { usePrivy } from "@privy-io/react-auth";
+import { Button } from "@/components/ui/button";
+import { useState, useEffect } from "react";
+import {
+  initializeSDK,
+  Environment,
+  getRateByType,
+  RateType,
+  getBanks,
+  resolveBankAccount,
+  addBankAccount,
+  Bank,
+  getBankAccounts,
+  createOfframpOrder,
+  Currency,
+  Chain,
+} from 'paj_ramp';
+import type { GetBankAccounts } from 'paj_ramp';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
+import { cn } from "@/lib/utils";
 
-const API_BASE_URL =
-  import.meta.env.VITE_BACKEND_URL || "http://localhost:4000";
-
-interface FonbnkCurrency {
-  currencyType: string;
-  currencyCode: string;
-  currencyDetails?: {
-    countryIsoCode?: string;
-  };
-  paymentChannels: {
-    type: string;
-    transferTypes: string[];
-    isDepositAllowed: boolean;
-    isPayoutAllowed: boolean;
-    carriers?: { code: string; name: string }[];
-  }[];
+try {
+  initializeSDK(Environment.Production);
+} catch (e) {
+  console.error("SDK initialization error:", e);
 }
 
-interface FonbnkOrderLimits {
-  deposit: { min: number; max: number; minUsd: number; maxUsd: number };
-  payout: { min: number; max: number; minUsd: number; maxUsd: number };
-}
-
-interface FonbnkQuoteSide {
-  paymentChannel: string;
-  currencyType: string;
-  currencyCode: string;
-  cashout?: {
-    amountBeforeFees: number;
-    amountAfterFees: number;
-    amountBeforeFeesUsd: number;
-    amountAfterFeesUsd: number;
-    totalChargedFees: number;
-    totalChargedFeesUsd: number;
-    exchangeRate: number;
-    exchangeRateAfterFees: number;
-  };
-}
-
-interface FonbnkQuoteResponse {
-  quoteId: string;
-  quoteExpiresAt: string;
-  deposit: FonbnkQuoteSide;
-  payout: FonbnkQuoteSide;
-}
-
-interface WidgetSignatureResponse {
-  source: string;
-  signature: string;
-}
+// USDC mint on Solana
+const USDC_MINT = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
+const WEBHOOK_URL = import.meta.env.VITE_PAJ_WEBHOOK_URL || "https://example.com/webhook";
 
 const SendBankAfrica = () => {
-  const { user } = usePrivy();
   const navigate = useNavigate();
+  const [amountUSDC, setAmountUSDC] = useState("");
+  const [baseRate, setBaseRate] = useState<number | null>(null);
+  const [rateLoading, setRateLoading] = useState(true);
+  const [estimatedNaira, setEstimatedNaira] = useState<string>("");
+  const [estimating, setEstimating] = useState(false);
 
-  // Dialog state
-  const [dialogOpen, setDialogOpen] = useState(false);
-  const [amount, setAmount] = useState("");
-  const [payoutCurrency, setPayoutCurrency] = useState<string | undefined>(undefined);
-  const [payoutChannelType, setPayoutChannelType] = useState<string | undefined>(undefined);
+  // Bank selection dialog state
+  const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [isAddingNew, setIsAddingNew] = useState(false);
+  const [openBankSelect, setOpenBankSelect] = useState(false);
+  const [banks, setBanks] = useState<Bank[]>([]);
+  const [banksLoading, setBanksLoading] = useState(false);
+  const [savedBankAccounts, setSavedBankAccounts] = useState<GetBankAccounts[]>([]);
+  const [fetchingSaved, setFetchingSaved] = useState(false);
 
-  // Form submission state
-  const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  // Bank form state (add new)
+  const [selectedBankId, setSelectedBankId] = useState<string>("");
+  const [accountNumber, setAccountNumber] = useState("");
 
-  // Currencies state
-  const [currencies, setCurrencies] = useState<FonbnkCurrency[]>([]);
-  const [currenciesLoading, setCurrenciesLoading] = useState(false);
-  const [currenciesError, setCurrenciesError] = useState<string | null>(null);
+  // Resolve state
+  const [resolvingAccount, setResolvingAccount] = useState(false);
+  const [resolvedAccountName, setResolvedAccountName] = useState("");
+  const [resolveError, setResolveError] = useState("");
+  const [addingAccount, setAddingAccount] = useState(false);
 
-  // Order limits state
-  const [orderLimits, setOrderLimits] = useState<FonbnkOrderLimits | null>(null);
-  const [orderLimitsLoading, setOrderLimitsLoading] = useState(false);
-  const [orderLimitsError, setOrderLimitsError] = useState<string | null>(null);
+  // Confirmation dialog state
+  const [confirmAccount, setConfirmAccount] = useState<GetBankAccounts | null>(null);
+  const [isConfirmOpen, setIsConfirmOpen] = useState(false);
+  const [creatingOrder, setCreatingOrder] = useState(false);
+  const [orderError, setOrderError] = useState("");
+  const [orderSuccess, setOrderSuccess] = useState(false);
+  const [createdOrderId, setCreatedOrderId] = useState("");
 
-  // Quote state
-  const [quote, setQuote] = useState<FonbnkQuoteResponse | null>(null);
-  const [quoteLoading, setQuoteLoading] = useState(false);
-  const [quoteError, setQuoteError] = useState<string | null>(null);
+  const sessionToken = import.meta.env.VITE_PAJ_RAMP_SESSION_TOKEN;
 
-  // Widget state
-  const [widgetConfig, setWidgetConfig] = useState<WidgetSignatureResponse | null>(null);
-  const [widgetError, setWidgetError] = useState<string | null>(null);
-  const [loadingWidget, setLoadingWidget] = useState(false);
-
-  const handleOpenDialog = () => {
-    setPayoutCurrency(undefined);
-    setAmount("");
-    setPayoutChannelType(undefined);
-    setError(null);
-    setOrderLimits(null);
-    setOrderLimitsError(null);
-    setQuote(null);
-    setQuoteError(null);
-    setDialogOpen(true);
-  };
-
-  // Fetch currencies on dialog open
   useEffect(() => {
-    const fetchCurrencies = async () => {
+    const fetchBaseRate = async () => {
       try {
-        setCurrenciesLoading(true);
-        setCurrenciesError(null);
-
-        const res = await fetch(`${API_BASE_URL}/fonbnk/africa/currencies`);
-        if (!res.ok) {
-          throw new Error("Failed to load payout currencies");
+        const rateData = await getRateByType(RateType.offRamp);
+        if (rateData && rateData.rate) {
+          setBaseRate(rateData.rate);
         }
-
-        const data: FonbnkCurrency[] = await res.json();
-        setCurrencies(Array.isArray(data) ? data : []);
-      } catch (err: any) {
-        setCurrenciesError(err?.message ?? "Unable to load currencies");
+      } catch (err) {
+        console.error("Failed to fetch base offramp rate:", err);
       } finally {
-        setCurrenciesLoading(false);
+        setRateLoading(false);
       }
     };
+    fetchBaseRate();
+  }, []);
 
-    if (dialogOpen && !currencies.length && !currenciesLoading) {
-      void fetchCurrencies();
-    }
-  }, [dialogOpen, currencies.length, currenciesLoading]);
-
-  // Fetch order limits when currency and channel are selected
   useEffect(() => {
-    const fetchOrderLimits = async () => {
-      if (!payoutCurrency || !payoutChannelType) return;
-
-      const currency = currencies.find(
-        (c) => c.currencyType === "fiat" && c.currencyCode === payoutCurrency,
-      );
-      if (!currency) return;
-
-      try {
-        setOrderLimitsLoading(true);
-        setOrderLimitsError(null);
-
-        const countryIso = currency.currencyDetails?.countryIsoCode;
-
-        const params = new URLSearchParams({
-          depositPaymentChannel: "crypto",
-          depositCurrencyType: "crypto",
-          depositCurrencyCode: "SOLANA_USDC",
-          payoutPaymentChannel: payoutChannelType,
-          payoutCurrencyType: "fiat",
-          payoutCurrencyCode: currency.currencyCode,
-        });
-
-        if (countryIso) {
-          params.append("payoutCountryIsoCode", countryIso);
-        }
-
-        const res = await fetch(
-          `${API_BASE_URL}/fonbnk/africa/order-limits?${params.toString()}`
-        );
-        if (!res.ok) {
-          throw new Error("Failed to load order limits");
-        }
-
-        const data: FonbnkOrderLimits = await res.json();
-        setOrderLimits(data);
-      } catch (err: any) {
-        setOrderLimits(null);
-        setOrderLimitsError(err?.message ?? "Unable to load order limits");
-      } finally {
-        setOrderLimitsLoading(false);
-      }
-    };
-
-    if (dialogOpen && payoutCurrency && payoutChannelType) {
-      void fetchOrderLimits();
+    const numAmount = Number(amountUSDC);
+    if (!numAmount || numAmount <= 0) {
+      setEstimatedNaira("");
+      return;
     }
-  }, [dialogOpen, payoutCurrency, payoutChannelType, currencies]);
-
-  // Fetch quote when amount changes
-  useEffect(() => {
-    const fetchQuote = async () => {
-      if (!payoutCurrency || !payoutChannelType) return;
-      const numericAmount = Number(amount);
-      if (!numericAmount || numericAmount <= 0) return;
-
-      const currency = currencies.find(
-        (c) => c.currencyType === "fiat" && c.currencyCode === payoutCurrency,
-      );
-      if (!currency) return;
-
-      try {
-        setQuoteLoading(true);
-        setQuoteError(null);
-
-        const countryIso = currency.currencyDetails?.countryIsoCode;
-
-        const body = {
-          deposit: {
-            paymentChannel: "crypto",
-            currencyType: "crypto",
-            currencyCode: "SOLANA_USDC",
-            amount: numericAmount,
-          },
-          payout: {
-            paymentChannel: payoutChannelType,
-            currencyType: "fiat",
-            currencyCode: currency.currencyCode,
-            countryIsoCode: countryIso,
-          },
-        };
-
-        const res = await fetch(`${API_BASE_URL}/fonbnk/africa/quote`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(body),
-        });
-
-        if (!res.ok) {
-          throw new Error("Failed to fetch quote");
-        }
-
-        const data: FonbnkQuoteResponse = await res.json();
-        setQuote(data);
-      } catch (err: any) {
-        setQuote(null);
-        setQuoteError(err?.message ?? "Unable to load quote");
-      } finally {
-        setQuoteLoading(false);
-      }
-    };
-
-    if (dialogOpen && payoutCurrency && payoutChannelType) {
-      void fetchQuote();
+    setEstimating(true);
+    if (baseRate) {
+      setEstimatedNaira((numAmount * baseRate).toFixed(2));
     }
-  }, [dialogOpen, payoutCurrency, payoutChannelType, amount, currencies]);
+    setEstimating(false);
+  }, [amountUSDC, baseRate]);
 
-  const handleSubmit = async (e: FormEvent) => {
+  const handleOpenDialog = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError(null);
+    setIsDialogOpen(true);
 
-    if (!amount || Number(amount) <= 0) {
-      setError("Enter a valid amount in USDC.");
-      return;
-    }
-    if (!payoutCurrency) {
-      setError("Select a payout currency.");
-      return;
-    }
-    if (!payoutChannelType) {
-      setError("Select a payout method.");
-      return;
-    }
-
-    const currency = currencies.find(
-      (c) => c.currencyType === "fiat" && c.currencyCode === payoutCurrency,
-    );
-    const countryIso = currency?.currencyDetails?.countryIsoCode;
-
-    const email = (user as any)?.email?.address as string | undefined;
-    if (!email) {
-      setError("We need your email from Privy to check KYC status.");
-      return;
-    }
-    if (!countryIso) {
-      setError("Unable to determine country for KYC. Please try a different payout currency.");
-      return;
-    }
-
+    setFetchingSaved(true);
     try {
-      setSubmitting(true);
-
-      const params = new URLSearchParams({
-        userEmail: email,
-        countryIsoCode: countryIso,
-      });
-
-      const res = await fetch(`${API_BASE_URL}/fonbnk/africa/user-kyc?${params.toString()}`);
-      if (!res.ok) {
-        throw new Error("Failed to check KYC status");
+      const fetchedAccounts = await getBankAccounts(sessionToken);
+      setSavedBankAccounts(fetchedAccounts || []);
+      if (!fetchedAccounts || fetchedAccounts.length === 0) {
+        setIsAddingNew(true);
       }
+    } catch (err) {
+      console.error("Error fetching saved accounts:", err);
+      setIsAddingNew(true);
+    } finally {
+      setFetchingSaved(false);
+    }
 
-      const data = (await res.json()) as {
-        reachedKycLimit: boolean;
-        currentKycStatus?: string;
+    if (banks.length === 0) {
+      setBanksLoading(true);
+      try {
+        const fetchedBanks = await getBanks(sessionToken);
+        setBanks(fetchedBanks);
+      } catch (err) {
+        console.error("Error fetching banks:", err);
+      } finally {
+        setBanksLoading(false);
+      }
+    }
+  };
+
+  useEffect(() => {
+    if (accountNumber.length === 10 && selectedBankId) {
+      setResolvingAccount(true);
+      setResolvedAccountName("");
+      setResolveError("");
+
+      const resolve = async () => {
+        try {
+          const result = await resolveBankAccount(sessionToken, selectedBankId, accountNumber);
+          if (result && result.accountName) {
+            setResolvedAccountName(result.accountName);
+          } else {
+            setResolveError("Could not resolve account name.");
+          }
+        } catch (err: any) {
+          setResolveError(err?.message || "Failed to resolve account.");
+        } finally {
+          setResolvingAccount(false);
+        }
       };
-
-      if (data.reachedKycLimit) {
-        setError(
-          "You have reached your KYC limit for this operation. Please upgrade your KYC with the provider."
-        );
-        setSubmitting(false);
-        return;
-      }
-
-      if (data.currentKycStatus && data.currentKycStatus !== "approved") {
-        setError(
-          "Your KYC is not approved yet. Please complete verification with the provider before off-ramping."
-        );
-        setSubmitting(false);
-        return;
-      }
-
-      setDialogOpen(false);
-    } catch (err: any) {
-      setError(err?.message ?? "Unable to verify KYC status. Please try again later.");
-    } finally {
-      setSubmitting(false);
+      resolve();
+    } else {
+      setResolvedAccountName("");
+      setResolveError("");
     }
-  };
+  }, [accountNumber, selectedBankId, sessionToken]);
 
-  const handlePrepareWidget = async () => {
-    setWidgetError(null);
-
-    if (!amount || Number(amount) <= 0) {
-      setWidgetError("Enter a valid USDC amount.");
-      return;
-    }
-    if (!payoutCurrency) {
-      setWidgetError("Select a payout currency.");
-      return;
-    }
-
-    const selectedCurrency = currencies.find(
-      (c) => c.currencyType === "fiat" && c.currencyCode === payoutCurrency,
-    );
-    const countryIso = selectedCurrency?.currencyDetails?.countryIsoCode;
-    if (!countryIso) {
-      setWidgetError("Unable to determine country for the selected currency.");
-      return;
-    }
-
-    const solAddress = (user as any)?.wallet?.address as string | undefined;
-    if (!solAddress) {
-      setWidgetError("We couldn't find your Solana wallet address.");
-      return;
-    }
-
+  const handleAddAccount = async () => {
+    setAddingAccount(true);
     try {
-      setLoadingWidget(true);
-      const res = await fetch(`${API_BASE_URL}/fonbnk/africa/widget-signature`);
-      if (!res.ok) {
-        throw new Error("Failed to get widget signature");
+      const added = await addBankAccount(sessionToken, selectedBankId, accountNumber);
+      console.log("Successfully added bank account:", added);
+
+      if (added) {
+        const newAccount = added as unknown as GetBankAccounts;
+        setSavedBankAccounts(prev => [...prev, newAccount]);
+        // Immediately prompt confirmation for the newly added account
+        setIsAddingNew(false);
+        setIsDialogOpen(false);
+        setConfirmAccount(newAccount);
+        setIsConfirmOpen(true);
+        setOrderError("");
+        setOrderSuccess(false);
       }
-      const data = (await res.json()) as WidgetSignatureResponse;
-      setWidgetConfig(data);
 
-      const url = new URL("https://sandbox-pay.fonbnk.com/offramp");
-      url.searchParams.set("source", data.source);
-      url.searchParams.set("signature", data.signature);
-      url.searchParams.set("network", "SOLANA");
-      url.searchParams.set("asset", "USDC");
-      url.searchParams.set("address", solAddress);
-      url.searchParams.set("amount", amount);
-      url.searchParams.set("currency", "local");
-      url.searchParams.set("countryIsoCode", countryIso);
-
-      window.open(url.toString(), "_blank", "noopener,noreferrer");
+      setResolvedAccountName("");
+      setAccountNumber("");
+      setSelectedBankId("");
     } catch (err: any) {
-      setWidgetError(err?.message ?? "Unable to prepare widget configuration.");
+      setResolveError(err?.message || "Failed to add account");
     } finally {
-      setLoadingWidget(false);
+      setAddingAccount(false);
     }
   };
+
+  // Called when the user clicks a saved account
+  const handleSelectAccount = (account: GetBankAccounts) => {
+    setIsDialogOpen(false);
+    setConfirmAccount(account);
+    setIsConfirmOpen(true);
+    setOrderError("");
+    setOrderSuccess(false);
+  };
+
+  // Called when user confirms the order
+  const handleConfirmOrder = async () => {
+    if (!confirmAccount) return;
+    setCreatingOrder(true);
+    setOrderError("");
+    try {
+      const order = await createOfframpOrder(
+        {
+          bank: confirmAccount.bank,
+          accountNumber: confirmAccount.accountNumber,
+          currency: Currency.NGN,
+          amount: Number(amountUSDC),
+          mint: USDC_MINT,
+          chain: Chain.SOLANA,
+          webhookURL: WEBHOOK_URL,
+        },
+        sessionToken,
+      );
+      console.log("Offramp order created:", order);
+      setCreatedOrderId(order?.id || "");
+      setOrderSuccess(true);
+    } catch (err: any) {
+      setOrderError(err?.message || "Failed to create order. Please try again.");
+    } finally {
+      setCreatingOrder(false);
+    }
+  };
+
+  const numUSDC = Number(amountUSDC);
 
   return (
     <div className="min-h-screen bg-background text-foreground">
@@ -385,377 +234,364 @@ const SendBankAfrica = () => {
           className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors"
         >
           <ArrowLeft className="w-4 h-4" />
-          <span>Back to send to bank</span>
+          <span>Back</span>
         </button>
 
-        <div className="glass-card p-6 sm:p-8 rounded-2xl space-y-6">
-          <div className="space-y-2">
-            <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">
-              African bank off-ramp
-            </h1>
-            <p className="text-sm text-muted-foreground">
-              Cash out your USDC to bank accounts across African countries.
-            </p>
-          </div>
-
-          <div className="space-y-3">
-            <p className="text-xs sm:text-sm text-muted-foreground">
-              Choose your preferred method to off-ramp:
-            </p>
-            <div className="flex flex-col gap-2">
-              <Button
-                type="button"
-                size="lg"
-                className="inline-flex items-center gap-2 rounded-full px-5 py-2.5 text-sm font-semibold"
-                onClick={handleOpenDialog}
-              >
-                <BanknoteIcon className="w-4 h-4" />
-                Direct bank transfer
-              </Button>
-
-              <Button
-                type="button"
-                variant="outline"
-                size="lg"
-                className="inline-flex items-center gap-2 rounded-full px-5 py-2.5 text-sm font-semibold"
-                onClick={handlePrepareWidget}
-              >
-                Fonbnk widget
-              </Button>
-            </div>
-          </div>
+        <div className="space-y-4">
+          <h1 className="text-3xl font-bold tracking-tight mb-2">Sell USDC</h1>
+          <p className="text-muted-foreground">
+            Sell your USDC directly to your local Naira bank account.
+          </p>
         </div>
 
-        {/* Direct Bank Transfer Dialog */}
-        <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-          <DialogContent className="max-w-lg w-full">
-            <DialogHeader>
-              <DialogTitle>
-                Send crypto to fiat
-                <span className="block text-xs font-normal text-muted-foreground mt-1">
-                  African bank payout
-                </span>
-              </DialogTitle>
-            </DialogHeader>
-
-            <form className="space-y-4" onSubmit={handleSubmit}>
-              <div className="space-y-2">
-                <Label htmlFor="amount">Amount to send (USDC SOL)</Label>
-                <Input
+        <div className="glass-card p-6 md:p-8 rounded-2xl max-w-md">
+          <form onSubmit={handleOpenDialog} className="space-y-6">
+            <div className="space-y-2">
+              <label htmlFor="amount" className="block text-sm font-medium">
+                Amount (USDC)
+              </label>
+              <div className="relative">
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">$</span>
+                <input
                   id="amount"
                   type="number"
-                  min="0"
-                  step="0.01"
-                  placeholder="0.00"
-                  className="bg-secondary/50 border-border/50"
-                  value={amount}
-                  onChange={(e) => setAmount(e.target.value)}
+                  min="1"
+                  step="1"
+                  required
+                  placeholder="e.g. 10"
+                  className="w-full bg-secondary/50 border border-border/80 rounded-xl py-3 pl-8 pr-4 text-foreground focus:outline-none focus:ring-2 focus:ring-primary shadow-sm"
+                  value={amountUSDC}
+                  onChange={(e) => setAmountUSDC(e.target.value)}
                 />
-                <p className="text-[11px] text-muted-foreground">
-                  You&apos;re sending SOLANA_USDC. We&apos;ll convert it to your selected
-                  fiat currency via an off-ramp provider.
-                </p>
               </div>
-
-              <div className="grid gap-3 sm:grid-cols-2">
-                <div className="space-y-2">
-                  <Label htmlFor="currency">Payout currency</Label>
-                  <Select
-                    value={payoutCurrency}
-                    onValueChange={(val) => {
-                      setPayoutCurrency(val);
-                      setPayoutChannelType(undefined);
-                      setQuote(null);
-                      setQuoteError(null);
-                    }}
-                  >
-                    <SelectTrigger id="currency" className="bg-secondary/50 border-border/50">
-                      <SelectValue placeholder="Select" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {currenciesLoading && (
-                        <SelectItem value="loading" disabled>
-                          Loading...
-                        </SelectItem>
-                      )}
-                      {!currenciesLoading && currenciesError && (
-                        <SelectItem value="error" disabled>
-                          Unable to load currencies
-                        </SelectItem>
-                      )}
-                      {!currenciesLoading &&
-                        !currenciesError &&
-                        currencies
-                          .filter((c) => c.currencyType === "fiat")
-                          .map((c) => (
-                            <SelectItem key={c.currencyCode} value={c.currencyCode}>
-                              {c.currencyCode}
-                            </SelectItem>
-                          ))}
-                    </SelectContent>
-                  </Select>
+              <div className="flex justify-between items-center mt-2">
+                <div className="text-xs text-muted-foreground">
+                  {rateLoading ? (
+                    <span className="flex items-center gap-1"><Loader2 className="w-3 h-3 animate-spin" /> Fetching rate...</span>
+                  ) : baseRate ? (
+                    <span>Rate: $1 = ₦{baseRate.toLocaleString()}</span>
+                  ) : (
+                    <span>Rate unavailable</span>
+                  )}
+                </div>
+                <div className="text-xs text-muted-foreground text-right font-medium">
+                  {estimating ? (
+                    <span className="flex items-center gap-1"><Loader2 className="w-3 h-3 animate-spin" /> Estimating...</span>
+                  ) : estimatedNaira ? (
+                    <span className="text-primary">Estimated: ~₦{Number(estimatedNaira).toLocaleString()}</span>
+                  ) : (
+                    <span>Estimated: ~₦0.00</span>
+                  )}
                 </div>
               </div>
+            </div>
 
-              {payoutCurrency && (
-                <div className="space-y-3 rounded-xl bg-secondary/40 border border-border/60 p-3 text-xs sm:text-sm">
-                  {(() => {
-                    const currency = currencies.find(
-                      (c) => c.currencyType === "fiat" && c.currencyCode === payoutCurrency,
-                    );
-                    if (!currency) return null;
-                    const payoutChannels = currency.paymentChannels.filter(
-                      (ch) => ch.isPayoutAllowed,
-                    );
+            <Button
+              type="submit"
+              className="w-full py-6 text-lg rounded-xl flex items-center gap-2"
+              disabled={!amountUSDC || numUSDC <= 0}
+            >
+              <Send className="w-5 h-5" />
+              Send to Bank Account
+            </Button>
 
-                    return (
-                      <>
-                        <div className="space-y-2">
-                          <p className="font-medium">Payout methods</p>
-                          {payoutChannels.length ? (
-                            <div className="flex flex-wrap gap-1.5 mt-1">
-                              {payoutChannels.map((ch) => (
-                                <button
-                                  key={ch.type}
-                                  type="button"
-                                  onClick={() => setPayoutChannelType(ch.type)}
-                                  className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-[11px] transition-colors ${
-                                    payoutChannelType === ch.type
-                                      ? "bg-primary text-primary-foreground border-primary"
-                                      : "bg-background/60 text-muted-foreground border-border/60 hover:border-primary/60"
-                                  }`}
-                                >
-                                  {ch.type.replace("_", " ")}
-                                </button>
-                              ))}
-                            </div>
-                          ) : (
-                            <p className="text-[11px] text-muted-foreground">
-                              No payout methods are available for this currency.
-                            </p>
-                          )}
-                        </div>
+            <p className="text-xs text-center text-muted-foreground mt-4">
+              Powered by PAJ Ramp
+            </p>
+          </form>
+        </div>
 
-                        {payoutChannelType === "mobile_money" && (
-                          <div className="space-y-1">
-                            <p className="font-medium">Supported mobile money carriers</p>
-                            {payoutChannels
-                              .find((ch) => ch.type === "mobile_money")
-                              ?.carriers?.length ? (
-                              <div className="flex flex-wrap gap-1.5 mt-1">
-                                {payoutChannels
-                                  .find((ch) => ch.type === "mobile_money")
-                                  ?.carriers?.map((carrier) => (
-                                    <span
-                                      key={carrier.code}
-                                      className="inline-flex items-center rounded-full bg-background/60 px-2 py-0.5 text-[11px] text-muted-foreground border border-border/60"
-                                    >
-                                      {carrier.name}
-                                    </span>
-                                  ))}
-                              </div>
-                            ) : (
-                              <p className="text-[11px] text-muted-foreground">
-                                Mobile money available for this currency.
-                              </p>
-                            )}
-                          </div>
-                        )}
+        {/* ── Bank Selection Dialog ── */}
+        <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+          <DialogContent className="sm:max-w-md border-border/80 bg-background/95 backdrop-blur-xl max-h-[90vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <Landmark className="w-5 h-5 text-primary" />
+                Bank Details
+              </DialogTitle>
+              <DialogDescription>
+                {isAddingNew
+                  ? "Add the bank account you will receive NGN to."
+                  : "Select a saved bank account or add a new one."}
+              </DialogDescription>
+            </DialogHeader>
 
-                        <div className="pt-2 border-t border-border/40 mt-2">
-                          <p className="font-medium mb-1">Payout limits</p>
-                          {orderLimitsLoading ? (
-                            <p className="text-[11px] text-muted-foreground">
-                              Fetching limits...
-                            </p>
-                          ) : orderLimitsError ? (
-                            <p className="text-[11px] text-red-500">{orderLimitsError}</p>
-                          ) : orderLimits ? (
-                            <div className="space-y-1 text-[11px] text-muted-foreground">
-                              <p>
-                                Min payout: <span className="font-semibold">{orderLimits.payout.min}</span>{" "}
-                                {currency.currencyCode} (~{orderLimits.payout.minUsd} USD)
-                              </p>
-                              <p>
-                                Max payout: <span className="font-semibold">{orderLimits.payout.max}</span>{" "}
-                                {currency.currencyCode} (~{orderLimits.payout.maxUsd} USD)
-                              </p>
-                            </div>
-                          ) : (
-                            <p className="text-[11px] text-muted-foreground">
-                              Limits will appear here once available.
-                            </p>
-                          )}
-                        </div>
-
-                        <div className="pt-2 border-t border-border/40 mt-2">
-                          <p className="font-medium mb-1">Quote</p>
-                          {!payoutChannelType ? (
-                            <p className="text-[11px] text-muted-foreground">
-                              Select a payout method to see an estimated quote.
-                            </p>
-                          ) : quoteLoading ? (
-                            <p className="text-[11px] text-muted-foreground">Fetching quote...</p>
-                          ) : quoteError ? (
-                            <p className="text-[11px] text-red-500">{quoteError}</p>
-                          ) : quote ? (
-                            <div className="space-y-1 text-[11px] text-muted-foreground">
-                              {quote.payout.cashout && (
-                                <p>
-                                  You&apos;ll receive approximately{' '}
-                                  <span className="font-semibold">
-                                    {quote.payout.cashout.amountAfterFees.toFixed(2)}{' '}
-                                    {currency.currencyCode}
-                                  </span>{' '}
-                                  after local fees.
-                                </p>
-                              )}
-                              {quote.payout.cashout && (
-                                <p>
-                                  Fees: ~
-                                  <span className="font-semibold">
-                                    {quote.payout.cashout.totalChargedFees.toFixed(2)}{' '}
-                                    {currency.currencyCode}
-                                  </span>
-                                </p>
-                              )}
-                              {quote.payout.cashout && (
-                                <p>
-                                  Implied rate: ~
-                                  <span className="font-semibold">
-                                    {quote.payout.cashout.exchangeRate.toFixed(2)}{' '}
-                                    {currency.currencyCode}
-                                  </span>{' '}
-                                  per 1 USDC.
-                                </p>
-                              )}
-                            </div>
-                          ) : (
-                            <p className="text-[11px] text-muted-foreground">
-                              Enter an amount and select a payout method to see an estimated
-                              quote.
-                            </p>
-                          )}
-                        </div>
-                      </>
-                    );
-                  })()}
+            {fetchingSaved ? (
+              <div className="flex justify-center items-center py-8">
+                <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+              </div>
+            ) : !isAddingNew && savedBankAccounts.length > 0 ? (
+              <div className="space-y-4 py-4">
+                <p className="text-sm font-medium">Your Saved Accounts</p>
+                <div className="space-y-3">
+                  {savedBankAccounts.map((account) => (
+                    <div
+                      key={account.id}
+                      className="flex flex-col p-4 rounded-xl border border-border/60 bg-secondary/30 hover:bg-secondary/50 hover:border-primary/50 transition-colors cursor-pointer"
+                      onClick={() => handleSelectAccount(account)}
+                    >
+                      <span className="font-semibold text-sm">{account.accountName}</span>
+                      <div className="flex items-center justify-between mt-1 text-muted-foreground text-xs">
+                        <span>{account.bank}</span>
+                        <span className="font-mono">{account.accountNumber}</span>
+                      </div>
+                    </div>
+                  ))}
                 </div>
-              )}
-
-              {error && (
-                <p className="text-sm text-red-500">{error}</p>
-              )}
-
-              <div className="pt-2 flex flex-col gap-3">
                 <Button
-                  type="submit"
-                  className="w-full bg-gradient-to-r from-primary to-accent hover:opacity-90 disabled:opacity-60 flex items-center justify-center gap-2"
-                  disabled={submitting}
+                  variant="outline"
+                  className="w-full mt-4"
+                  onClick={() => setIsAddingNew(true)}
                 >
-                  <BanknoteIcon className="w-4 h-4" />
-                  {submitting ? "Preparing off-ramp..." : "Continue to off-ramp"}
+                  + Add New Bank Account
                 </Button>
-                <p className="text-[11px] text-muted-foreground text-center">
-                  This is a preview flow. Actual settlement will be handled via a
-                  regulated off-ramp provider.
-                </p>
               </div>
-            </form>
+            ) : (
+              <div className="space-y-4 py-4">
+                {savedBankAccounts.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setIsAddingNew(false)}
+                    className="text-xs text-primary mb-2 flex items-center hover:underline"
+                  >
+                    <ArrowLeft className="w-3 h-3 mr-1" /> Back to saved accounts
+                  </button>
+                )}
+
+                <div className="space-y-2 flex flex-col">
+                  <label className="text-sm font-medium">Select Bank</label>
+                  <Popover open={openBankSelect} onOpenChange={setOpenBankSelect}>
+                    <PopoverTrigger asChild>
+                      <Button
+                        variant="outline"
+                        role="combobox"
+                        aria-expanded={openBankSelect}
+                        disabled={banksLoading}
+                        className="w-full justify-between bg-secondary/50 border-border/80 text-foreground font-normal hover:bg-secondary/70 h-10 px-3 py-2"
+                      >
+                        <span className="truncate max-w-[90%] text-left">
+                          {banksLoading
+                            ? "Loading banks..."
+                            : selectedBankId
+                              ? banks.find((bank: any) => (bank.id || bank.code) === selectedBankId)?.name
+                              : "Search bank..."}
+                        </span>
+                        <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
+                      <Command>
+                        <CommandInput placeholder="Search bank name..." />
+                        <CommandList>
+                          <CommandEmpty>No bank found.</CommandEmpty>
+                          <CommandGroup>
+                            {banks.map((bank: any) => {
+                              const bankId = bank.id || bank.code;
+                              return (
+                                <CommandItem
+                                  key={bankId}
+                                  value={bank.name}
+                                  onSelect={() => {
+                                    setSelectedBankId(bankId === selectedBankId ? "" : bankId);
+                                    setOpenBankSelect(false);
+                                  }}
+                                >
+                                  <Check
+                                    className={cn(
+                                      "mr-2 h-4 w-4",
+                                      selectedBankId === bankId ? "opacity-100 text-primary" : "opacity-0"
+                                    )}
+                                  />
+                                  {bank.name}
+                                </CommandItem>
+                              );
+                            })}
+                          </CommandGroup>
+                        </CommandList>
+                      </Command>
+                    </PopoverContent>
+                  </Popover>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Account Number</label>
+                  <div className="relative">
+                    <input
+                      type="text"
+                      maxLength={10}
+                      placeholder="10-digit account number"
+                      className="w-full bg-secondary/50 border border-border/80 rounded-xl py-2 px-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary shadow-sm"
+                      value={accountNumber}
+                      onChange={(e) => setAccountNumber(e.target.value.replace(/\D/g, ''))}
+                      disabled={resolvingAccount || addingAccount}
+                    />
+                    {resolvingAccount && (
+                      <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                        <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {resolvedAccountName && (
+                  <div className="rounded-lg bg-emerald-500/10 border border-emerald-500/20 p-3 flex items-start gap-3 mt-2">
+                    <CheckCircle2 className="w-5 h-5 text-emerald-500 shrink-0 mt-0.5" />
+                    <div className="flex flex-col">
+                      <span className="text-sm font-medium text-emerald-600 dark:text-emerald-400">Account verified</span>
+                      <span className="text-xs text-muted-foreground">{resolvedAccountName}</span>
+                    </div>
+                  </div>
+                )}
+
+                {resolveError && (
+                  <div className="rounded-lg bg-red-500/10 border border-red-500/20 p-3 flex items-start gap-3 mt-2">
+                    <AlertCircle className="w-5 h-5 text-red-500 shrink-0 mt-0.5" />
+                    <div className="flex flex-col">
+                      <span className="text-sm font-medium text-red-600 dark:text-red-400">Verification failed</span>
+                      <span className="text-xs text-muted-foreground">{resolveError}</span>
+                    </div>
+                  </div>
+                )}
+
+                <Button
+                  type="button"
+                  className="w-full mt-2"
+                  disabled={!resolvedAccountName || addingAccount}
+                  onClick={handleAddAccount}
+                >
+                  {addingAccount ? (
+                    <><Loader2 className="w-4 h-4 animate-spin mr-2" /> Saving...</>
+                  ) : (
+                    "Save Account & Continue"
+                  )}
+                </Button>
+              </div>
+            )}
           </DialogContent>
         </Dialog>
 
-        {/* Widget Configuration Section */}
-        <div className="glass-card p-6 sm:p-8 rounded-2xl space-y-6">
-          <div className="space-y-2">
-            <h2 className="text-xl sm:text-2xl font-bold tracking-tight">
-              Fonbnk widget setup
-            </h2>
-            <p className="text-sm text-muted-foreground">
-              Configure the USDC amount and payout currency for the Fonbnk Pay Widget.
-            </p>
-          </div>
+        {/* ── Confirmation Dialog ── */}
+        <Dialog open={isConfirmOpen} onOpenChange={(open) => {
+          if (!creatingOrder) {
+            setIsConfirmOpen(open);
+            if (!open) {
+              setOrderSuccess(false);
+              setOrderError("");
+              setConfirmAccount(null);
+            }
+          }
+        }}>
+          <DialogContent className="sm:max-w-md border-border/80 bg-background/95 backdrop-blur-xl">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                {orderSuccess ? (
+                  <CheckCircle2 className="w-5 h-5 text-emerald-500" />
+                ) : (
+                  <ShieldAlert className="w-5 h-5 text-primary" />
+                )}
+                {orderSuccess ? "Order Created!" : "Confirm Transfer"}
+              </DialogTitle>
+              <DialogDescription>
+                {orderSuccess
+                  ? "Your off-ramp order has been placed successfully."
+                  : "Please review the details before confirming."}
+              </DialogDescription>
+            </DialogHeader>
 
-          <div className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="widget-amount">Amount to send (USDC)</Label>
-              <Input
-                id="widget-amount"
-                type="number"
-                min="0"
-                step="0.01"
-                placeholder="0.00"
-                className="bg-secondary/50 border-border/50"
-                value={amount}
-                onChange={(e) => setAmount(e.target.value)}
-              />
-            </div>
+            {!orderSuccess ? (
+              <>
+                {/* Summary card */}
+                <div className="rounded-xl border border-border/60 bg-secondary/30 p-4 space-y-3 my-2">
+                  <div className="flex justify-between items-center">
+                    <span className="text-xs text-muted-foreground">You send</span>
+                    <span className="font-bold text-lg text-foreground">{numUSDC} USDC</span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-xs text-muted-foreground">Estimated payout</span>
+                    <span className="font-semibold text-primary">
+                      ~₦{estimatedNaira ? Number(estimatedNaira).toLocaleString() : "—"}
+                    </span>
+                  </div>
+                  <div className="border-t border-border/40 pt-3 space-y-2">
+                    <p className="text-xs text-muted-foreground font-medium">Recipient account</p>
+                    <div className="space-y-1">
+                      <p className="text-sm font-semibold">{confirmAccount?.accountName}</p>
+                      <p className="text-xs text-muted-foreground">{confirmAccount?.bank}</p>
+                      <p className="text-xs font-mono text-muted-foreground">{confirmAccount?.accountNumber}</p>
+                    </div>
+                  </div>
+                </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="widget-currency">Payout currency</Label>
-              <Select
-                value={payoutCurrency}
-                onValueChange={(val) => setPayoutCurrency(val)}
-              >
-                <SelectTrigger
-                  id="widget-currency"
-                  className="bg-secondary/50 border-border/50"
-                >
-                  <SelectValue placeholder="Select" />
-                </SelectTrigger>
-                <SelectContent>
-                  {currenciesLoading && (
-                    <SelectItem value="loading" disabled>
-                      Loading...
-                    </SelectItem>
-                  )}
-                  {!currenciesLoading && currenciesError && (
-                    <SelectItem value="error" disabled>
-                      Unable to load currencies
-                    </SelectItem>
-                  )}
-                  {!currenciesLoading &&
-                    !currenciesError &&
-                    currencies
-                      .filter((c) => c.currencyType === "fiat")
-                      .map((c) => (
-                        <SelectItem key={c.currencyCode} value={c.currencyCode}>
-                          {c.currencyCode}
-                        </SelectItem>
-                      ))}
-                </SelectContent>
-              </Select>
-            </div>
+                {orderError && (
+                  <div className="rounded-lg bg-red-500/10 border border-red-500/20 p-3 flex items-start gap-3">
+                    <AlertCircle className="w-5 h-5 text-red-500 shrink-0 mt-0.5" />
+                    <div className="flex flex-col">
+                      <span className="text-sm font-medium text-red-600 dark:text-red-400">Order failed</span>
+                      <span className="text-xs text-muted-foreground">{orderError}</span>
+                    </div>
+                  </div>
+                )}
 
-            {widgetError && (
-              <p className="text-sm text-red-500">{widgetError}</p>
-            )}
-
-            <div className="pt-2 flex flex-col gap-3">
-              <Button
-                type="button"
-                className="w-full bg-gradient-to-r from-primary to-accent hover:opacity-90 disabled:opacity-60"
-                disabled={loadingWidget}
-                onClick={handlePrepareWidget}
-              >
-                {loadingWidget ? "Preparing widget..." : "Open Fonbnk widget"}
-              </Button>
-
-              {widgetConfig && (
-                <div className="text-xs sm:text-sm rounded-xl border border-border/60 bg-secondary/40 p-3 space-y-1 text-left break-all">
-                  <p>
-                    <span className="font-medium">source:</span>{" "}
-                    {widgetConfig.source}
+                <DialogFooter className="flex gap-2 pt-2">
+                  <Button
+                    variant="outline"
+                    className="flex-1"
+                    disabled={creatingOrder}
+                    onClick={() => {
+                      setIsConfirmOpen(false);
+                      setOrderError("");
+                      setConfirmAccount(null);
+                      // Re-open bank selection
+                      setIsDialogOpen(true);
+                    }}
+                  >
+                    Change account
+                  </Button>
+                  <Button
+                    className="flex-1"
+                    disabled={creatingOrder}
+                    onClick={handleConfirmOrder}
+                  >
+                    {creatingOrder ? (
+                      <><Loader2 className="w-4 h-4 animate-spin mr-2" /> Placing order...</>
+                    ) : (
+                      "Confirm & Send"
+                    )}
+                  </Button>
+                </DialogFooter>
+              </>
+            ) : (
+              <div className="space-y-4 py-2">
+                <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/10 p-4 space-y-2">
+                  <p className="text-sm text-emerald-600 dark:text-emerald-400 font-medium">
+                    Your order is being processed
                   </p>
-                  <p>
-                    <span className="font-medium">signature:</span>{" "}
-                    {widgetConfig.signature}
+                  {createdOrderId && (
+                    <p className="text-xs text-muted-foreground font-mono break-all">
+                      Order ID: {createdOrderId}
+                    </p>
+                  )}
+                  <p className="text-xs text-muted-foreground">
+                    ₦{estimatedNaira ? Number(estimatedNaira).toLocaleString() : "—"} will be sent to{" "}
+                    <span className="font-medium">{confirmAccount?.accountName}</span> at{" "}
+                    <span className="font-medium">{confirmAccount?.bank}</span>.
                   </p>
                 </div>
-              )}
-            </div>
-          </div>
-        </div>
+                <Button
+                  className="w-full"
+                  onClick={() => {
+                    setIsConfirmOpen(false);
+                    setOrderSuccess(false);
+                    setConfirmAccount(null);
+                    setAmountUSDC("");
+                  }}
+                >
+                  Done
+                </Button>
+              </div>
+            )}
+          </DialogContent>
+        </Dialog>
       </main>
     </div>
   );

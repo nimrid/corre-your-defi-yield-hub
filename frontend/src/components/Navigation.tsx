@@ -12,16 +12,16 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-
-const API_BASE_URL =
-  import.meta.env.VITE_BACKEND_URL ||
-  "http://localhost:4000";
+import { apiFetch } from "@/services/apiClient";
 
 const Navigation = () => {
   const [isOpen, setIsOpen] = useState(false);
   const { ready, authenticated, login, logout, user } = usePrivy();
   const [referralData, setReferralData] = useState<{ referralCode: string; referralsCount: number } | null>(null);
   const [referralLoading, setReferralLoading] = useState(false);
+  const [showLoginPrompt, setShowLoginPrompt] = useState(false);
+  const [accessCode, setAccessCode] = useState("");
+  const [accessError, setAccessError] = useState(false);
 
   useEffect(() => {
     const fetchReferralData = async () => {
@@ -29,11 +29,20 @@ const Navigation = () => {
 
       try {
         setReferralLoading(true);
-        const res = await fetch(`${API_BASE_URL}/users/${user.id}/referral`);
-        if (res.ok) {
-          const data = await res.json();
-          setReferralData(data);
+        const res = await apiFetch(`/users/${user.id}/referral`);
+        if (!res.ok) return;
+
+        const contentType = res.headers.get("content-type") ?? "";
+        if (!contentType.includes("application/json")) {
+          const text = await res.text().catch(() => "");
+          throw new Error(
+            `Expected JSON but received '${contentType || "unknown"}'. ` +
+              `First 120 chars: ${text.slice(0, 120)}`,
+          );
         }
+
+        const data = await res.json();
+        setReferralData(data);
       } catch (err) {
         console.error("Failed to fetch referral data:", err);
       } finally {
@@ -130,7 +139,7 @@ const Navigation = () => {
               </>
             ) : (
               <Button
-                onClick={login}
+                onClick={() => setShowLoginPrompt(true)}
                 variant="default"
                 className="bg-gradient-to-r from-primary to-accent hover:opacity-90"
               >
@@ -219,7 +228,7 @@ const Navigation = () => {
               <Button
                 onClick={() => {
                   setIsOpen(false);
-                  login();
+                  setShowLoginPrompt(true);
                 }}
                 className="w-full bg-gradient-to-r from-primary to-accent hover:opacity-90"
               >
@@ -229,6 +238,60 @@ const Navigation = () => {
           </div>
         </div>
       )}
+
+      {/* Login Access Prompt */}
+      <Dialog open={showLoginPrompt} onOpenChange={setShowLoginPrompt}>
+        <DialogContent className="sm:max-w-md mx-4">
+          <DialogHeader>
+            <DialogTitle className="text-2xl font-bold">Early Access</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 pt-4">
+            <p className="text-muted-foreground">
+              Corre is currently in private beta. Please enter your access code to proceed to login.
+            </p>
+            <div className="space-y-2">
+              <input
+                type="text"
+                placeholder="Access Code"
+                value={accessCode}
+                onChange={(e) => {
+                  setAccessCode(e.target.value.toUpperCase());
+                  setAccessError(false);
+                }}
+                className="flex h-12 w-full rounded-xl border border-input bg-background/50 px-3 py-2 text-md ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 transition-colors font-medium uppercase"
+              />
+              {accessError && (
+                <p className="text-sm text-destructive font-medium">
+                  Invalid code. Please join the waitlist below.
+                </p>
+              )}
+            </div>
+            <div className="flex flex-col gap-3 pt-2">
+              <Button
+                className="w-full text-lg h-12 bg-primary hover:opacity-90 transition-opacity"
+                onClick={() => {
+                  if (accessCode === 'DEFICORREPROD09') {
+                    setShowLoginPrompt(false);
+                    setAccessCode('');
+                    login();
+                  } else {
+                    setAccessError(true);
+                  }
+                }}
+              >
+                Verify Code
+              </Button>
+              <Button
+                variant="outline"
+                className="w-full h-12 border-border/50 hover:bg-secondary/50"
+                onClick={() => window.open("https://forms.gle/8AHNnMPzs3r8EZaR9", "_blank")}
+              >
+                Join Waitlist
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </nav>
   );
 };

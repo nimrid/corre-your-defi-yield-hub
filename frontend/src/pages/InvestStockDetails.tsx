@@ -12,10 +12,7 @@ import {
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
-
-const API_BASE_URL =
-  import.meta.env.VITE_BACKEND_URL ||
-  "http://localhost:4000";
+import { apiFetch } from "@/services/apiClient";
 
 interface TokenStatsWindow {
   priceChange?: number | null;
@@ -204,7 +201,7 @@ const InvestStockDetails = () => {
 
         // 1) Fetch net shares for this stock from backend (purchases minus sales)
         try {
-          const res = await fetch(`${API_BASE_URL}/stock-holdings/${user.id}`);
+          const res = await apiFetch(`/stock-holdings/${user.id}`);
           if (res.ok) {
             const rows: Array<{ stockMint: string; shares: string }> = await res.json();
             const mintKey = mint ?? token.address;
@@ -745,7 +742,7 @@ const InvestStockDetails = () => {
                       null;
 
                     // Log generic transaction entry for this buy
-                    void fetch(`${API_BASE_URL}/transactions`, {
+                    void apiFetch("/transactions", {
                       method: "POST",
                       headers: {
                         "Content-Type": "application/json",
@@ -767,7 +764,7 @@ const InvestStockDetails = () => {
 
                     // Also record a structured stock purchase entry
                     const sharesAmount = outAmount ?? undefined;
-                    void fetch(`${API_BASE_URL}/stock-purchases`, {
+                    void apiFetch("/stock-purchases", {
                       method: "POST",
                       headers: {
                         "Content-Type": "application/json",
@@ -1066,7 +1063,7 @@ const InvestStockDetails = () => {
                       null;
 
                     // Log generic transaction entry for this sale (incoming USDC)
-                    void fetch(`${API_BASE_URL}/transactions`, {
+                    void apiFetch("/transactions", {
                       method: "POST",
                       headers: {
                         "Content-Type": "application/json",
@@ -1088,7 +1085,7 @@ const InvestStockDetails = () => {
 
                     // Also record a structured stock sale entry in stock_sales table
                     const sharesAmount = sellInput || undefined;
-                    void fetch(`${API_BASE_URL}/stock-sales`, {
+                    void apiFetch("/stock-sales", {
                       method: "POST",
                       headers: {
                         "Content-Type": "application/json",

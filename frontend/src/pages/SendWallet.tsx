@@ -17,10 +17,7 @@ import { usePrivy } from "@privy-io/react-auth";
 import {
   useWallets as useSolanaWallets,
 } from "@privy-io/react-auth/solana";
-
-const API_BASE_URL =
-  import.meta.env.VITE_BACKEND_URL ||
-  "http://localhost:4000";
+import { apiFetch } from "@/services/apiClient";
 
 const USDC_MINT = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"; // Solana USDC
 
@@ -88,7 +85,7 @@ const SendWallet = () => {
 
       // Check gas sponsorship eligibility first
       try {
-        const eligibilityResponse = await fetch(`${API_BASE_URL}/gas-sponsorship/check`, {
+        const eligibilityResponse = await apiFetch("/gas-sponsorship/check", {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -245,7 +242,7 @@ const SendWallet = () => {
       // If the user is not available, we skip recording rather than blocking the UI.
       const privyUserId = user?.id;
       if (privyUserId) {
-        void fetch(`${API_BASE_URL}/transactions`, {
+        void apiFetch("/transactions", {
           method: "POST",
           headers: {
             "Content-Type": "application/json",

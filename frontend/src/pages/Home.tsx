@@ -2,7 +2,7 @@ import Navigation from "@/components/Navigation";
 import { usePrivy, useWallets } from "@privy-io/react-auth";
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Copy, ChevronDown, QrCode } from "lucide-react";
+import { Copy, ChevronDown, QrCode, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { US_STOCK_TOKENS } from "@/config/usStockTokens";
 import { QRCodeSVG } from "qrcode.react";
@@ -13,10 +13,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-
-const API_BASE_URL =
-  import.meta.env.VITE_BACKEND_URL ||
-  "http://localhost:4000";
+import { apiFetch } from "@/services/apiClient";
 
 interface TransactionRow {
   id: number;
@@ -151,7 +148,7 @@ const Home = () => {
           referredByCode: localStorage.getItem("referredByCode"),
         };
 
-        await fetch(`${API_BASE_URL}/users/upsert`, {
+        await apiFetch("/users/upsert", {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -266,7 +263,7 @@ const Home = () => {
         setTxLoading(true);
         setTxError(null);
 
-        const res = await fetch(`${API_BASE_URL}/transactions/${user.id}`);
+        const res = await apiFetch(`/transactions/${user.id}`);
         if (!res.ok) {
           throw new Error("Failed to fetch transactions");
         }
@@ -287,7 +284,7 @@ const Home = () => {
         setSavingsLoading(true);
         setSavingsError(null);
 
-        const res = await fetch(`${API_BASE_URL}/savings-activity/${user.id}`);
+        const res = await apiFetch(`/savings-activity/${user.id}`);
         if (!res.ok) {
           throw new Error("Failed to fetch savings activity");
         }
@@ -308,7 +305,7 @@ const Home = () => {
         setStockHistoryLoading(true);
         setStockHistoryError(null);
 
-        const res = await fetch(`${API_BASE_URL}/stock-history/${user.id}`);
+        const res = await apiFetch(`/stock-history/${user.id}`);
         if (!res.ok) {
           throw new Error("Failed to fetch stock history");
         }
@@ -887,7 +884,21 @@ const TotalBalance = ({ wallets }: { wallets: any[] }) => {
     fetchTotal();
   }, [wallets]);
 
-  return <p className="text-2xl font-bold">{total}</p>;
+  const navigate = useNavigate();
+
+  return (
+    <div className="flex items-center gap-3">
+      <p className="text-2xl font-bold">{total}</p>
+      <button
+        onClick={() => navigate('/buy-usdc')}
+        className="flex items-center gap-1.5 px-3 py-1 text-sm font-medium rounded-full bg-primary/10 text-primary hover:bg-primary/20 transition-colors"
+        title="Buy USDC with Naira"
+      >
+        <Plus className="w-4 h-4" />
+        Buy
+      </button>
+    </div>
+  );
 };
 
 export default Home;
