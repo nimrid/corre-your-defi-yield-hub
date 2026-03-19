@@ -3,20 +3,26 @@ import { ArrowLeft, Wallet, Loader2, ArrowRight, Share, CheckCircle2 } from "luc
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { useState, useEffect } from "react";
-import { initializeSDK, Environment, getRateByType, RateType, createOnrampOrder, Currency, Chain, OnrampOrder } from 'paj_ramp';
+import { getRateByType, RateType, createOnrampOrder, Currency, Chain, OnrampOrder } from 'paj_ramp';
 import { usePrivy, useWallets } from "@privy-io/react-auth";
 import { API_PREFIX } from "@/services/apiClient";
-
-try {
-    initializeSDK(Environment.Production);
-} catch (e) {
-    console.error("SDK initialization error:", e);
-}
+import { usePajSession } from "@/hooks/usePajSession";
+import { PajSessionModal } from "@/components/PajSessionModal";
 
 const BuyUSDCNaira = () => {
     const navigate = useNavigate();
     const { user } = usePrivy();
     const { wallets } = useWallets();
+    
+    // PAJ Session Management
+    const { 
+        sessionToken, 
+        userEmail, 
+        isModalOpen, 
+        requestSession, 
+        handleSessionSuccess, 
+        handleModalClose 
+    } = usePajSession();
 
     // Mirror Home.tsx: filter for Solana wallets, fall back to linked accounts
     const solanaWallets = wallets.filter((w) => w.walletClientType === "solana");
@@ -34,8 +40,6 @@ const BuyUSDCNaira = () => {
     const [creatingOrder, setCreatingOrder] = useState(false);
     const [order, setOrder] = useState<OnrampOrder | null>(null);
     const [orderError, setOrderError] = useState("");
-
-    const sessionToken = import.meta.env.VITE_PAJ_RAMP_SESSION_TOKEN;
 
     useEffect(() => {
         const fetchBaseRate = async () => {
@@ -104,6 +108,18 @@ const BuyUSDCNaira = () => {
 
         setCreatingOrder(true);
         try {
+            // Request session token (will open modal if needed)
+            let token = sessionToken;
+            if (!token) {
+                try {
+                    token = await requestSession();
+                } catch (err: any) {
+                    setOrderError(err?.message || "Session setup required. Please try again.");
+                    setCreatingOrder(false);
+                    return;
+                }
+            }
+
             const newOrder = await createOnrampOrder(
                 {
                     fiatAmount: numAmount,
@@ -113,7 +129,7 @@ const BuyUSDCNaira = () => {
                     chain: Chain.SOLANA,
                     webhookURL: `${window.location.origin}${API_PREFIX}/webhooks/paj-onramp`,
                 },
-                sessionToken
+                token
             );
             console.log("Order created:", newOrder);
             setOrder(newOrder);
@@ -128,6 +144,17 @@ const BuyUSDCNaira = () => {
     return (
         <div className="min-h-screen bg-background text-foreground">
             <Navigation />
+            
+            {/* PAJ Session Modal */}
+            {userEmail && (
+                <PajSessionModal
+                    isOpen={isModalOpen}
+                    onClose={handleModalClose}
+                    onSuccess={handleSessionSuccess}
+                    userEmail={userEmail}
+                />
+            )}
+            
             <main className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-24 space-y-8">
                 <button
                     type="button"

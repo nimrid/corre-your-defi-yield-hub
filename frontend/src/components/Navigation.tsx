@@ -14,6 +14,10 @@ import {
 } from "@/components/ui/dialog";
 import { apiFetch } from "@/services/apiClient";
 
+const EARLY_ACCESS_STORAGE_KEY = "correEarlyAccessVerified";
+const EARLY_ACCESS_CODE = "DEFICORREPROD09";
+const TELEGRAM_COMMUNITY_URL = "https://t.me/+_ExsYWddoeNmZTA0";
+
 const Navigation = () => {
   const [isOpen, setIsOpen] = useState(false);
   const { ready, authenticated, login, logout, user } = usePrivy();
@@ -22,6 +26,10 @@ const Navigation = () => {
   const [showLoginPrompt, setShowLoginPrompt] = useState(false);
   const [accessCode, setAccessCode] = useState("");
   const [accessError, setAccessError] = useState(false);
+
+  const hasEarlyAccess =
+    typeof window !== "undefined" &&
+    window.localStorage.getItem(EARLY_ACCESS_STORAGE_KEY) === "true";
 
   useEffect(() => {
     const fetchReferralData = async () => {
@@ -74,6 +82,14 @@ const Navigation = () => {
                 <Link to="/home">
                   <Button variant="ghost">Dashboard</Button>
                 </Link>
+
+                <Button
+                  type="button"
+                  variant="ghost"
+                  onClick={() => window.open(TELEGRAM_COMMUNITY_URL, "_blank", "noopener,noreferrer")}
+                >
+                  Join our community
+                </Button>
 
                 <Dialog>
                   <DialogTrigger asChild>
@@ -139,7 +155,13 @@ const Navigation = () => {
               </>
             ) : (
               <Button
-                onClick={() => setShowLoginPrompt(true)}
+                onClick={() => {
+                  if (hasEarlyAccess) {
+                    login();
+                    return;
+                  }
+                  setShowLoginPrompt(true);
+                }}
                 variant="default"
                 className="bg-gradient-to-r from-primary to-accent hover:opacity-90"
               >
@@ -167,6 +189,18 @@ const Navigation = () => {
                 <Link to="/home" onClick={() => setIsOpen(false)}>
                   <Button variant="ghost" className="w-full">Dashboard</Button>
                 </Link>
+
+                <Button
+                  type="button"
+                  variant="ghost"
+                  className="w-full"
+                  onClick={() => {
+                    setIsOpen(false);
+                    window.open(TELEGRAM_COMMUNITY_URL, "_blank", "noopener,noreferrer");
+                  }}
+                >
+                  Join our community
+                </Button>
 
                 <Dialog>
                   <DialogTrigger asChild>
@@ -228,6 +262,10 @@ const Navigation = () => {
               <Button
                 onClick={() => {
                   setIsOpen(false);
+                  if (hasEarlyAccess) {
+                    login();
+                    return;
+                  }
                   setShowLoginPrompt(true);
                 }}
                 className="w-full bg-gradient-to-r from-primary to-accent hover:opacity-90"
@@ -270,7 +308,8 @@ const Navigation = () => {
               <Button
                 className="w-full text-lg h-12 bg-primary hover:opacity-90 transition-opacity"
                 onClick={() => {
-                  if (accessCode === 'DEFICORREPROD09') {
+                  if (accessCode === EARLY_ACCESS_CODE) {
+                    window.localStorage.setItem(EARLY_ACCESS_STORAGE_KEY, "true");
                     setShowLoginPrompt(false);
                     setAccessCode('');
                     login();

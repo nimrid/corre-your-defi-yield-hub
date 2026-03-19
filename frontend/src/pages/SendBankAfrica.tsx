@@ -4,8 +4,6 @@ import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { useState, useEffect } from "react";
 import {
-  initializeSDK,
-  Environment,
   getRateByType,
   RateType,
   getBanks,
@@ -22,12 +20,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { cn } from "@/lib/utils";
-
-try {
-  initializeSDK(Environment.Production);
-} catch (e) {
-  console.error("SDK initialization error:", e);
-}
+import { usePajSession } from "@/hooks/usePajSession";
+import { PajSessionModal } from "@/components/PajSessionModal";
 
 // USDC mint on Solana
 const USDC_MINT = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
@@ -35,6 +29,17 @@ const WEBHOOK_URL = import.meta.env.VITE_PAJ_WEBHOOK_URL || "https://example.com
 
 const SendBankAfrica = () => {
   const navigate = useNavigate();
+  
+  // PAJ Session Management
+  const { 
+    sessionToken, 
+    userEmail, 
+    isModalOpen, 
+    requestSession, 
+    handleSessionSuccess, 
+    handleModalClose 
+  } = usePajSession();
+  
   const [amountUSDC, setAmountUSDC] = useState("");
   const [baseRate, setBaseRate] = useState<number | null>(null);
   const [rateLoading, setRateLoading] = useState(true);
@@ -68,8 +73,6 @@ const SendBankAfrica = () => {
   const [orderSuccess, setOrderSuccess] = useState(false);
   const [createdOrderId, setCreatedOrderId] = useState("");
 
-  const sessionToken = import.meta.env.VITE_PAJ_RAMP_SESSION_TOKEN;
-
   useEffect(() => {
     const fetchBaseRate = async () => {
       try {
@@ -101,11 +104,23 @@ const SendBankAfrica = () => {
 
   const handleOpenDialog = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    // Request session token first if needed
+    let token = sessionToken;
+    if (!token) {
+      try {
+        token = await requestSession();
+      } catch (err: any) {
+        console.error("Session setup required:", err);
+        return;
+      }
+    }
+    
     setIsDialogOpen(true);
 
     setFetchingSaved(true);
     try {
-      const fetchedAccounts = await getBankAccounts(sessionToken);
+      const fetchedAccounts = await getBankAccounts(token);
       setSavedBankAccounts(fetchedAccounts || []);
       if (!fetchedAccounts || fetchedAccounts.length === 0) {
         setIsAddingNew(true);
@@ -120,7 +135,7 @@ const SendBankAfrica = () => {
     if (banks.length === 0) {
       setBanksLoading(true);
       try {
-        const fetchedBanks = await getBanks(sessionToken);
+        const fetchedBanks = await getBanks(token);
         setBanks(fetchedBanks);
       } catch (err) {
         console.error("Error fetching banks:", err);
@@ -200,6 +215,18 @@ const SendBankAfrica = () => {
     setCreatingOrder(true);
     setOrderError("");
     try {
+      // Request session token (will open modal if needed)
+      let token = sessionToken;
+      if (!token) {
+        try {
+          token = await requestSession();
+        } catch (err: any) {
+          setOrderError(err?.message || "Session setup required. Please try again.");
+          setCreatingOrder(false);
+          return;
+        }
+      }
+
       const order = await createOfframpOrder(
         {
           bank: confirmAccount.bank,
@@ -210,7 +237,7 @@ const SendBankAfrica = () => {
           chain: Chain.SOLANA,
           webhookURL: WEBHOOK_URL,
         },
-        sessionToken,
+        token,
       );
       console.log("Offramp order created:", order);
       setCreatedOrderId(order?.id || "");
@@ -227,6 +254,17 @@ const SendBankAfrica = () => {
   return (
     <div className="min-h-screen bg-background text-foreground">
       <Navigation />
+      
+      {/* PAJ Session Modal */}
+      {userEmail && (
+        <PajSessionModal
+          isOpen={isModalOpen}
+          onClose={handleModalClose}
+          onSuccess={handleSessionSuccess}
+          userEmail={userEmail}
+        />
+      )}
+      
       <main className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-24 space-y-8">
         <button
           type="button"
