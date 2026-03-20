@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { useState, useEffect } from "react";
 import { getRateByType, RateType, createOnrampOrder, Currency, Chain, OnrampOrder } from 'paj_ramp';
 import { usePrivy, useWallets } from "@privy-io/react-auth";
-import { API_PREFIX } from "@/services/apiClient";
+import { webhookUrl } from "@/services/apiClient";
 import { usePajSession } from "@/hooks/usePajSession";
 import { PajSessionModal } from "@/components/PajSessionModal";
 
@@ -127,7 +127,7 @@ const BuyUSDCNaira = () => {
                     recipient: walletAddress,
                     mint: USDC_MINT,
                     chain: Chain.SOLANA,
-                    webhookURL: `${window.location.origin}${API_PREFIX}/webhooks/paj-onramp`,
+                    webhookURL: webhookUrl("/webhook/paj-ramp"),
                 },
                 token
             );

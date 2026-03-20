@@ -507,107 +507,80 @@ const Home = () => {
                       type: "savings" as const,
                       sortDate: new Date(sa.createdAt).getTime(),
                     })),
+                    ...stockHistory.map((sh) => ({
+                      ...sh,
+                      type: "stock" as const,
+                      sortDate: new Date(sh.createdAt).getTime(),
+                    })),
                   ]
                     .sort((a, b) => b.sortDate - a.sortDate)
                     .map((item, idx) => {
+                      const itemDate = new Date((item as any).createdAt).toLocaleString(undefined, {
+                        dateStyle: "medium",
+                        timeStyle: "short",
+                      });
+
                       if (item.type === "transfer") {
-                        const tx = item as TransactionRow & { type: "transfer"; sortDate: number };
+                        const tx = item as TransactionRow;
                         return (
-                          <div
-                            key={`tx-${tx.id}`}
-                            className="flex flex-col sm:flex-row sm:items-center sm:justify-between p-3 rounded-lg bg-secondary/30 text-sm"
-                          >
+                          <div key={`tx-${tx.id}-${idx}`} className="flex flex-col sm:flex-row sm:items-center sm:justify-between p-4 rounded-xl bg-secondary/30 text-sm border border-border/40 hover:border-primary/30 transition-all duration-200">
                             <div className="space-y-1">
                               <div className="flex items-center gap-2">
-                                <span
-                                  className={
-                                    tx.direction === "incoming"
-                                      ? "text-emerald-500 font-semibold"
-                                      : "text-red-500 font-semibold"
-                                  }
-                                >
+                                <span className={tx.direction === "incoming" ? "text-emerald-500 font-bold" : "text-red-500 font-bold"}>
                                   {tx.direction === "incoming" ? "Received" : "Sent"}
                                 </span>
-                                <span className="font-mono">
-                                  {tx.amount} {tx.assetSymbol}
-                                </span>
+                                <span className="font-mono text-base font-medium">{tx.amount} {tx.assetSymbol}</span>
                               </div>
-                              <div className="text-xs text-muted-foreground break-all">
-                                <div>
-                                  <span className="font-medium">From:</span> {formatVaultLabel(tx.fromAddress)}
-                                </div>
-                                <div>
-                                  <span className="font-medium">To:</span> {formatVaultLabel(tx.toAddress)}
-                                </div>
+                              <div className="text-xs text-muted-foreground opacity-80">
+                                <div><span className="font-medium text-foreground/70">From:</span> {formatVaultLabel(tx.fromAddress)}</div>
+                                <div><span className="font-medium text-foreground/70">To:</span> {formatVaultLabel(tx.toAddress)}</div>
                               </div>
                             </div>
                             <div className="mt-2 sm:mt-0 sm:text-right text-xs text-muted-foreground space-y-1">
-                              <div>
-                                {new Date(tx.createdAt).toLocaleString(undefined, {
-                                  dateStyle: "short",
-                                  timeStyle: "short",
-                                })}
+                              <div className="font-semibold text-foreground/90">{itemDate}</div>
+                              <div className="uppercase tracking-widest text-[10px] font-bold opacity-60">{tx.chainType} Transfer</div>
+                            </div>
+                          </div>
+                        );
+                      } else if (item.type === "savings") {
+                        const sa = item as SavingsActivityRow;
+                        return (
+                          <div key={`sa-${sa.id}-${idx}`} className="flex flex-col sm:flex-row sm:items-center sm:justify-between p-4 rounded-xl bg-blue-500/5 text-sm border border-blue-500/20 hover:border-blue-500/40 transition-all duration-200">
+                            <div className="space-y-1">
+                              <div className="flex items-center gap-2">
+                                <span className={sa.direction === "deposit" ? "text-blue-500 font-bold" : "text-orange-500 font-bold"}>
+                                  {sa.direction === "deposit" ? "Savings Deposit" : "Savings Withdrawal"}
+                                </span>
+                                <span className="font-mono text-base font-medium">{sa.amount} USDC</span>
                               </div>
-                              <div className="uppercase tracking-wide">
-                                {tx.chainType}
+                              <div className="text-xs text-muted-foreground opacity-80">
+                                <span className="font-medium text-foreground/70">Vault:</span> {sa.vaultType === "regular" ? "Regular Yield" : "Protected Yield"}
                               </div>
-                              {tx.txSignature && (
-                                <div className="truncate max-w-[14rem]">
-                                  <span className="font-medium">Tx:</span> {tx.txSignature}
-                                </div>
-                              )}
+                            </div>
+                            <div className="mt-2 sm:mt-0 sm:text-right text-xs text-muted-foreground space-y-1">
+                              <div className="font-semibold text-foreground/90">{itemDate}</div>
+                              <div className="uppercase tracking-widest text-[10px] font-bold text-blue-400">Yield Hub (Lulo)</div>
                             </div>
                           </div>
                         );
                       } else {
-                        const sa = item as SavingsActivityRow & { type: "savings"; sortDate: number };
+                        const sh = item as StockHistoryRow;
                         return (
-                          <div
-                            key={`savings-${sa.id}`}
-                            className="flex flex-col sm:flex-row sm:items-center sm:justify-between p-3 rounded-lg bg-secondary/30 text-sm"
-                          >
+                          <div key={`sh-${sh.id}-${idx}`} className="flex flex-col sm:flex-row sm:items-center sm:justify-between p-4 rounded-xl bg-purple-500/5 text-sm border border-purple-500/20 hover:border-purple-500/40 transition-all duration-200">
                             <div className="space-y-1">
                               <div className="flex items-center gap-2">
-                                <span
-                                  className={
-                                    sa.direction === "deposit"
-                                      ? "text-emerald-500 font-semibold"
-                                      : "text-red-500 font-semibold"
-                                  }
-                                >
-                                  {sa.direction === "deposit" ? "Deposited" : "Withdrawn"}
+                                <span className={sh.side === "buy" ? "text-purple-500 font-bold" : "text-rose-500 font-bold"}>
+                                  {sh.side === "buy" ? "Bought" : "Sold"} {sh.stockSymbol}
                                 </span>
-                                <span className="font-mono">
-                                  {sa.amount} USDC
-                                </span>
+                                <span className="font-mono text-base font-medium">{sh.usdcAmount} USDC</span>
                               </div>
-                              <div className="text-xs text-muted-foreground break-all">
-                                <div>
-                                  <span className="font-medium">Vault:</span>{" "}
-                                  {sa.vaultType === "regular" ? "Regular Savings" : "Protected Savings"}
-                                </div>
-                                {sa.walletAddress && (
-                                  <div>
-                                    <span className="font-medium">Wallet:</span> {sa.walletAddress}
-                                  </div>
-                                )}
+                              <div className="text-xs text-muted-foreground opacity-80">
+                                <div><span className="font-medium text-foreground/70">Asset:</span> {sh.stockName}</div>
+                                {sh.sharesAmount && <div><span className="font-medium text-foreground/70">Shares:</span> {sh.sharesAmount}</div>}
                               </div>
                             </div>
                             <div className="mt-2 sm:mt-0 sm:text-right text-xs text-muted-foreground space-y-1">
-                              <div>
-                                {new Date(sa.createdAt).toLocaleString(undefined, {
-                                  dateStyle: "short",
-                                  timeStyle: "short",
-                                })}
-                              </div>
-                              <div className="uppercase tracking-wide">
-                                Solana
-                              </div>
-                              {sa.txSignature && (
-                                <div className="truncate max-w-[14rem]">
-                                  <span className="font-medium">Tx:</span> {sa.txSignature}
-                                </div>
-                              )}
+                              <div className="font-semibold text-foreground/90">{itemDate}</div>
                             </div>
                           </div>
                         );
@@ -616,69 +589,7 @@ const Home = () => {
                 </div>
               )}
 
-              <div className="mt-6 border-t border-border/60 pt-4">
-                <h3 className="text-lg font-semibold mb-3">Stock trades</h3>
-                {stockHistoryLoading ? (
-                  <div className="text-center py-4 text-muted-foreground text-sm">
-                    <p>Loading stock trades...</p>
-                  </div>
-                ) : stockHistoryError ? (
-                  <div className="text-center py-4 text-red-500 text-sm">
-                    <p>{stockHistoryError}</p>
-                  </div>
-                ) : !stockHistory.length ? (
-                  <p className="text-sm text-muted-foreground">No stock trades yet.</p>
-                ) : (
-                  <div className="space-y-3 max-h-72 overflow-y-auto">
-                    {stockHistory.map((tx) => (
-                      <div
-                        key={`${tx.side}-${tx.id}-${tx.txSignature ?? "no-tx"}`}
-                        className="flex flex-col sm:flex-row sm:items-center sm:justify-between p-3 rounded-lg bg-secondary/30 text-sm"
-                      >
-                        <div className="space-y-1">
-                          <div className="flex items-center gap-2">
-                            <span
-                              className={
-                                tx.side === "buy"
-                                  ? "text-emerald-500 font-semibold"
-                                  : "text-red-500 font-semibold"
-                              }
-                            >
-                              {tx.side === "buy" ? "Bought" : "Sold"}
-                            </span>
-                            <span className="font-mono">
-                              {tx.sharesAmount ?? "-"} {tx.stockSymbol ?? "STOCK"}
-                            </span>
-                          </div>
-                          <div className="text-xs text-muted-foreground break-all">
-                            <div>
-                              <span className="font-medium">Stock:</span>{" "}
-                              {tx.stockName ?? tx.stockSymbol ?? tx.stockMint}
-                            </div>
-                            <div>
-                              <span className="font-medium">USDC:</span>{" "}
-                              {tx.usdcAmount}
-                            </div>
-                          </div>
-                        </div>
-                        <div className="mt-2 sm:mt-0 sm:text-right text-xs text-muted-foreground space-y-1">
-                          <div>
-                            {new Date(tx.createdAt).toLocaleString(undefined, {
-                              dateStyle: "short",
-                              timeStyle: "short",
-                            })}
-                          </div>
-                          {tx.txSignature && (
-                            <div className="truncate max-w-[14rem]">
-                              <span className="font-medium">Tx:</span> {tx.txSignature}
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
+
             </div>
           </div>
         </div>

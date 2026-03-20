@@ -25,7 +25,7 @@ const SendBank = () => {
               Send to bank
             </h1>
             <p className="text-sm text-muted-foreground">
-              Cash out your USDC to bank accounts across African countries.
+              Cash out your USDC to bank accounts across all supported countries. More added gradually.
             </p>
           </div>
 
@@ -40,8 +40,19 @@ const SendBank = () => {
               onClick={() => navigate("/send/bank/africa")}
             >
               <BanknoteIcon className="w-4 h-4" />
-              African bank off-ramp
+              Nigeria bank off-ramp
             </Button>
+
+            <Button
+              type="button"
+              size="lg"
+              className="mt-2 inline-flex items-center gap-2 rounded-full px-5 py-2.5 text-sm font-semibold"
+              
+            >
+              <BanknoteIcon className="w-4 h-4" />
+              Global bank off-ramp (coming soon)
+            </Button>
+
           </div>
         </div>
       </main>

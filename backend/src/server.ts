@@ -6,8 +6,7 @@ import type { TransactionInput } from "./models/transaction";
 import africaRoutes from "./routes/africaRoutes.js";
 import heliusWebhookRoutes from "./routes/heliusWebhook.js";
 import privyWebhookRoutes from "./routes/privyWebhook.js";
-import pajOfframpWebhookRoutes from "./routes/pajOfframpWebhook.js";
-import pajOnrampWebhookRoutes from "./routes/pajOnrampWebhook.js";
+import pajWebhookRoutes from "./routes/pajWebhook.js";
 import {
   checkGasSponsorshipEligibility,
   detectSuspiciousPatterns,
@@ -75,11 +74,8 @@ app.use("/fonbnk/africa", africaRoutes);
 // Mount Helius webhook routes
 app.use("/api/webhooks", heliusWebhookRoutes);
 
-// Mount PAJ off-ramp webhook routes
-app.use("/api/webhooks", pajOfframpWebhookRoutes);
-
-// Mount PAJ on-ramp webhook routes
-app.use("/api/webhooks", pajOnrampWebhookRoutes);
+// NEW: Unified PAJ Ramp webhook router (as per SDK example)
+app.use("/webhook/paj-ramp", pajWebhookRoutes);
 
 (async () => {
   try {
@@ -306,7 +302,7 @@ app.get("/health", (_req, res) => {
   res.json({ status: "ok" });
 });
 
-app.get("/api/paj-session/:privyUserId", async (req, res) => {
+app.get("/paj-session/:privyUserId", async (req, res) => {
   const { privyUserId } = req.params;
 
   if (!privyUserId) {
@@ -339,7 +335,7 @@ app.get("/api/paj-session/:privyUserId", async (req, res) => {
   }
 });
 
-app.put("/api/paj-session/:privyUserId", async (req, res) => {
+app.put("/paj-session/:privyUserId", async (req, res) => {
   const { privyUserId } = req.params;
   const {
     email,
@@ -983,6 +979,75 @@ app.get("/savings-activity/:privyUserId", async (req, res) => {
     return res.json(result.rows);
   } catch (err) {
     console.error("Error querying savings activity", err);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// Record a savings deposit or withdrawal
+app.post("/savings", async (req, res) => {
+  const body = req.body as {
+    privyUserId?: string;
+    vaultType?: string;
+    direction?: string;
+    usdcAmount?: string;
+    walletAddress?: string | null;
+    txSignature?: string | null;
+    source?: string | null;
+  };
+
+  if (!body?.privyUserId) {
+    return res.status(400).json({ error: "privyUserId is required" });
+  }
+
+  if (!body.vaultType || !body.direction || !body.usdcAmount) {
+    return res.status(400).json({ error: "vaultType, direction, and usdcAmount are required" });
+  }
+
+  try {
+    const client = await pool.connect();
+
+    try {
+      await client.query("BEGIN");
+
+      const userResult = await client.query(
+        "SELECT id FROM users WHERE privy_user_id = $1",
+        [body.privyUserId],
+      );
+
+      if (!userResult.rows.length) {
+        await client.query("ROLLBACK");
+        return res.status(400).json({ error: "User not found for provided privyUserId" });
+      }
+
+      const userId: number = userResult.rows[0].id;
+
+      await client.query(
+        `INSERT INTO savings_activity
+         (user_id, vault_type, direction, usdc_amount, wallet_address, tx_signature, source)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+        [
+          userId,
+          body.vaultType,
+          body.direction,
+          body.usdcAmount,
+          body.walletAddress ?? null,
+          body.txSignature ?? null,
+          body.source ?? null,
+        ],
+      );
+
+      await client.query("COMMIT");
+
+      return res.json({ success: true });
+    } catch (err) {
+      await client.query("ROLLBACK");
+      console.error("Error inserting savings activity", err);
+      return res.status(500).json({ error: "Internal server error" });
+    } finally {
+      client.release();
+    }
+  } catch (err) {
+    console.error("DB connection error when inserting savings activity", err);
     return res.status(500).json({ error: "Internal server error" });
   }
 });

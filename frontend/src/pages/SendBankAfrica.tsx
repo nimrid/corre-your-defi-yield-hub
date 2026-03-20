@@ -22,10 +22,10 @@ import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, Command
 import { cn } from "@/lib/utils";
 import { usePajSession } from "@/hooks/usePajSession";
 import { PajSessionModal } from "@/components/PajSessionModal";
+import { webhookUrl } from "@/services/apiClient";
 
 // USDC mint on Solana
 const USDC_MINT = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
-const WEBHOOK_URL = import.meta.env.VITE_PAJ_WEBHOOK_URL || "https://example.com/webhook";
 
 const SendBankAfrica = () => {
   const navigate = useNavigate();
@@ -235,7 +235,7 @@ const SendBankAfrica = () => {
           amount: Number(amountUSDC),
           mint: USDC_MINT,
           chain: Chain.SOLANA,
-          webhookURL: WEBHOOK_URL,
+          webhookURL: webhookUrl("/webhook/paj-ramp"),
         },
         token,
       );
