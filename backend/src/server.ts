@@ -27,6 +27,8 @@ const ALLOWED_ORIGINS = [
   "https://incongrously-beetlike-anabel.ngrok-free.dev",
   // Production frontend (add your real domain here once deployed)
   "https://defi-corre.onrender.com",
+  "https://corre.bond",
+  "https://www.corre.bond",
 ];
 
 app.use(
