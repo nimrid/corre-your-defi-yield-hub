@@ -11,8 +11,8 @@ interface RateLimitConfig {
 const DEFAULT_LIMITS: RateLimitConfig = {
   maxTransactionsPerHour: 10,
   maxTransactionsPerDay: 50,
-  maxDailySpendUSD: 100,
-  maxSingleTransactionUSD: 10,
+  maxDailySpendUSD: 100000,
+  maxSingleTransactionUSD: 10000,
 };
 
 export interface GasSponsorshipCheck {

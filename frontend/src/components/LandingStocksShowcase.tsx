@@ -1,6 +1,18 @@
 import { US_STOCK_TOKENS } from "@/config/usStockTokens";
 import { TrendingUp, Activity } from "lucide-react";
 
+const LOGOKIT_TOKEN = import.meta.env.VITE_LOGOKIT_API_KEY as string;
+
+/** Strip tokenised-stock suffixes to get a cleaner ticker for LogoKit */
+const cleanTicker = (symbol: string) =>
+    symbol
+        .replace(/x$/i, "")   // e.g. GMEx → GME, CSCOx → CSCO
+        .replace(/on$/i, "")  // e.g. SNAPon → SNAP, SPOTon → SPOT
+        .toUpperCase();
+
+const logoUrl = (symbol: string) =>
+    `https://img.logokit.com/ticker/${cleanTicker(symbol)}?token=${LOGOKIT_TOKEN}`;
+
 const LandingStocksShowcase = () => {
     // We duplicate the array 3 times to ensure a seamless infinite scroll width
     const duplicationArray = [...US_STOCK_TOKENS, ...US_STOCK_TOKENS, ...US_STOCK_TOKENS];
@@ -33,8 +45,22 @@ const LandingStocksShowcase = () => {
                             key={i}
                             className="bg-secondary/30 border border-border/50 backdrop-blur-sm rounded-2xl p-4 md:p-6 mx-3 flex flex-col items-start gap-4 transition-all duration-300 hover:-translate-y-2 hover:bg-secondary/60 hover:shadow-xl hover:shadow-primary/10 hover:border-primary/30 min-w-[200px] md:min-w-[240px]"
                         >
-                            <div className="w-10 h-10 md:w-12 md:h-12 bg-primary/10 rounded-full flex items-center justify-center border border-primary/20 shrink-0">
-                                <span className="font-bold text-primary text-sm md:text-base">{stock.symbol.slice(0, 2)}</span>
+                            <div className="w-10 h-10 md:w-12 md:h-12 bg-white rounded-full flex items-center justify-center border border-primary/20 shrink-0 overflow-hidden">
+                                <img
+                                    src={logoUrl(stock.symbol)}
+                                    alt={stock.symbol}
+                                    className="w-full h-full object-contain p-1"
+                                    onError={(e) => {
+                                        const target = e.currentTarget;
+                                        target.style.display = "none";
+                                        const parent = target.parentElement;
+                                        if (parent) {
+                                            parent.classList.remove("bg-white");
+                                            parent.classList.add("bg-primary/10");
+                                            parent.innerHTML = `<span class="font-bold text-primary text-sm md:text-base">${stock.symbol.slice(0, 2).toUpperCase()}</span>`;
+                                        }
+                                    }}
+                                />
                             </div>
                             <div className="space-y-1">
                                 <h3 className="font-bold text-lg md:text-xl text-foreground">{stock.symbol}</h3>
