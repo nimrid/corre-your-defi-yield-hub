@@ -19,6 +19,11 @@ import pajWebhookRoutes from "./routes/pajWebhook.js";
 // Schema bootstrap
 import { runMigrations } from "./migrations.js";
 
+// Inngest
+import { serve } from "inngest/express";
+import { inngest } from "./inngest/client.js";
+import { sendWeeklyYieldEmails } from "./inngest/functions.js";
+
 // ── Environment ──────────────────────────────────────────────────────────────
 dotenv.config();
 
@@ -98,6 +103,7 @@ app.use("/paj-session", pajSessionRoutes);
 app.use("/fonbnk/africa", africaRoutes);
 app.use("/api/webhooks", heliusWebhookRoutes);
 app.use("/webhook/paj-ramp", pajWebhookRoutes);
+app.use("/api/inngest", serve({ client: inngest, functions: [sendWeeklyYieldEmails] }));
 
 // ── Backward-compatible route aliases ────────────────────────────────────────
 // These preserve the original URL paths so the frontend doesn't need changes.

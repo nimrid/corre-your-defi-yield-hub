@@ -212,7 +212,7 @@ const SaveRegular = () => {
           }),
         }).catch(() => { });
 
-        void apiFetch("/savings", {
+        void apiFetch("/savings-activity", {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -323,6 +323,8 @@ const SaveRegular = () => {
         body: JSON.stringify({ privyUserId, withdrawalId: pendingWithdrawal.withdrawalId }),
       }).catch(() => { });
 
+      const actualAmount = pendingWithdrawal.nativeAmount ? (Number(pendingWithdrawal.nativeAmount) / Math.pow(10, 6)).toString() : "0";
+
       await apiFetch("/transactions", {
         method: "POST",
         headers: {
@@ -332,7 +334,7 @@ const SaveRegular = () => {
           privyUserId,
           chainType: "solana",
           assetSymbol: "USDC",
-          amount,
+          amount: actualAmount,
           direction: "incoming",
           txSignature: signature,
           fromAddress: "lulo_vault_regular",
@@ -341,7 +343,7 @@ const SaveRegular = () => {
         }),
       }).catch(() => { });
 
-      void apiFetch("/savings", {
+      void apiFetch("/savings-activity", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -350,7 +352,7 @@ const SaveRegular = () => {
           privyUserId,
           vaultType: "regular",
           direction: "withdrawal",
-          usdcAmount: amount,
+          usdcAmount: actualAmount,
           walletAddress: owner,
           txSignature: signature,
           source: "save_regular_withdraw",

@@ -161,7 +161,7 @@ const SaveProtected = () => {
           }),
         }).catch(() => { });
 
-        void apiFetch("/savings", {
+        void apiFetch("/savings-activity", {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -268,7 +268,7 @@ const SaveProtected = () => {
           }),
         }).catch(() => { });
 
-        void apiFetch("/savings", {
+        void apiFetch("/savings-activity", {
           method: "POST",
           headers: {
             "Content-Type": "application/json",

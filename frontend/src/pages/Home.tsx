@@ -559,7 +559,6 @@ const Home = () => {
                             </div>
                             <div className="mt-2 sm:mt-0 sm:text-right text-xs text-muted-foreground space-y-1">
                               <div className="font-semibold text-foreground/90">{itemDate}</div>
-                              <div className="uppercase tracking-widest text-[10px] font-bold text-blue-400">Yield Hub (Lulo)</div>
                             </div>
                           </div>
                         );
