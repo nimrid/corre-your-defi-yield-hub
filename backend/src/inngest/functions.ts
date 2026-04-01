@@ -116,10 +116,18 @@ export const sendWeeklyYieldEmails = inngest.createFunction(
                           </table>
                         </div>
                         
-                        <p style="margin: 24px 0 0; font-size: 16px;">Keep building your future with <strong>Corre DeFi</strong>.</p>
+                        <div style="margin-top: 32px; padding: 20px; background-color: #fffbeb; border: 1px solid #fef3c7; border-radius: 8px; text-align: center;">
+                          <p style="margin: 0; color: #92400e; font-size: 14px; font-weight: 600;">Early Access Code: <span style="font-family: monospace; font-size: 16px; background: #ffffff; padding: 4px 8px; border-radius: 4px; border: 1px solid #fde68a;">DEFICORREPROD09</span></p>
+                        </div>
+
+                        <p style="margin: 24px 0 0; font-size: 16px;">Keep building your future with <strong>Corre</strong>.</p>
                       </div>
                       <div style="text-align: center; padding: 24px 40px; background-color: #fafafa; border-top: 1px solid #eaeaea; color: #a1a1aa; font-size: 13px;">
-                        <p style="margin: 0;">© 2026 Corre DeFi. All rights reserved.</p>
+                        <div style="margin-bottom: 16px;">
+                          <a href="https://corre.bond" style="color: #000000; text-decoration: none; margin: 0 12px;">Web App</a>
+                          <a href="https://x.com/Corre_hq" style="color: #000000; text-decoration: none; margin: 0 12px;">X (Twitter)</a>
+                        </div>
+                        <p style="margin: 0;">© 2026 Corre. All rights reserved.</p>
                       </div>
                     </div>
                   </div>
@@ -136,7 +144,7 @@ export const sendWeeklyYieldEmails = inngest.createFunction(
                   <div style="background-color: #f4f4f5; padding: 40px 20px;">
                     <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 6px rgba(0,0,0,0.05); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
                       <div style="background-color: #000000; padding: 32px 40px; text-align: center;">
-                        <img src="https://www.corre.bond/corre_logo.png" alt="Corre" style="width: 48px; height: 48px; margin-bottom: 16px;">
+                        <img src="https://hefafnsdx7xk1nzg.public.blob.vercel-storage.com/corre_logo_preview.png" alt="Corre" style="width: 48px; height: 48px; margin-bottom: 16px;">
                         <h1 style="margin: 0; color: #ffffff; font-size: 24px; font-weight: 600; letter-spacing: -0.5px;">Don't Miss Out on Yield! 💰</h1>
                       </div>
                       <div style="padding: 40px; color: #3f3f46; line-height: 1.6;">
@@ -161,6 +169,11 @@ export const sendWeeklyYieldEmails = inngest.createFunction(
                           </table>
                         </div>
                         
+                        <div style="margin-bottom: 24px; padding: 20px; background-color: #fffbeb; border: 1px solid #fef3c7; border-radius: 8px; text-align: center;">
+                          <p style="margin: 0 0 8px; color: #92400e; font-size: 14px; font-weight: 600;">Ready to bypass the waitlist?</p>
+                          <p style="margin: 0; color: #92400e; font-size: 14px;">Use Access Code: <span style="font-family: monospace; font-size: 16px; background: #ffffff; padding: 4px 8px; border-radius: 4px; border: 1px solid #fde68a; font-weight: bold;">DEFICORREPROD09</span></p>
+                        </div>
+
                         <p style="margin: 0 0 24px; font-size: 16px;">Start earning today. Simply deposit funds into your Corre Vault to watch your balance compound automatically over time!</p>
                         
                         <div style="text-align: center;">
@@ -168,7 +181,11 @@ export const sendWeeklyYieldEmails = inngest.createFunction(
                         </div>
                       </div>
                       <div style="text-align: center; padding: 24px 40px; background-color: #fafafa; border-top: 1px solid #eaeaea; color: #a1a1aa; font-size: 13px;">
-                        <p style="margin: 0;">© 2026 Corre DeFi. All rights reserved.</p>
+                        <div style="margin-bottom: 16px;">
+                          <a href="https://corre.bond" style="color: #000000; text-decoration: none; margin: 0 12px;">Web App</a>
+                          <a href="https://x.com/Corre_hq" style="color: #000000; text-decoration: none; margin: 0 12px;">X (Twitter)</a>
+                        </div>
+                        <p style="margin: 0;">© 2026 Corre. All rights reserved.</p>
                       </div>
                     </div>
                   </div>

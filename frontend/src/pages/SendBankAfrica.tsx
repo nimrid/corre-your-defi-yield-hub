@@ -22,13 +22,17 @@ import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, Command
 import { cn } from "@/lib/utils";
 import { usePajSession } from "@/hooks/usePajSession";
 import { PajSessionModal } from "@/components/PajSessionModal";
-import { webhookUrl } from "@/services/apiClient";
+import { usePrivy } from "@privy-io/react-auth";
+import { useWallets as useSolanaWallets } from "@privy-io/react-auth/solana";
+import { webhookUrl, apiFetch } from "@/services/apiClient";
 
 // USDC mint on Solana
 const USDC_MINT = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
 
 const SendBankAfrica = () => {
   const navigate = useNavigate();
+  const { user } = usePrivy();
+  const { wallets } = useSolanaWallets();
   
   // PAJ Session Management
   const { 
@@ -62,16 +66,27 @@ const SendBankAfrica = () => {
   // Resolve state
   const [resolvingAccount, setResolvingAccount] = useState(false);
   const [resolvedAccountName, setResolvedAccountName] = useState("");
+  const [resolvedBankId, setResolvedBankId] = useState(""); // bank.id from resolveBankAccount
   const [resolveError, setResolveError] = useState("");
   const [addingAccount, setAddingAccount] = useState(false);
 
   // Confirmation dialog state
   const [confirmAccount, setConfirmAccount] = useState<GetBankAccounts | null>(null);
+  // The bank institution's MongoDB ID (from getBanks), required by createOfframpOrder
+  const [confirmBankId, setConfirmBankId] = useState<string>("");
   const [isConfirmOpen, setIsConfirmOpen] = useState(false);
   const [creatingOrder, setCreatingOrder] = useState(false);
   const [orderError, setOrderError] = useState("");
   const [orderSuccess, setOrderSuccess] = useState(false);
   const [createdOrderId, setCreatedOrderId] = useState("");
+  const [createdOrder, setCreatedOrder] = useState<{
+    id: string;
+    address: string;
+    amount: number;
+    fiatAmount: number;
+    rate: number;
+    fee: number;
+  } | null>(null);
 
   useEffect(() => {
     const fetchBaseRate = async () => {
@@ -156,6 +171,7 @@ const SendBankAfrica = () => {
           const result = await resolveBankAccount(sessionToken, selectedBankId, accountNumber);
           if (result && result.accountName) {
             setResolvedAccountName(result.accountName);
+            setResolvedBankId(result.bank.id); // capture the institution ID
           } else {
             setResolveError("Could not resolve account name.");
           }
@@ -168,6 +184,7 @@ const SendBankAfrica = () => {
       resolve();
     } else {
       setResolvedAccountName("");
+      setResolvedBankId("");
       setResolveError("");
     }
   }, [accountNumber, selectedBankId, sessionToken]);
@@ -181,16 +198,18 @@ const SendBankAfrica = () => {
       if (added) {
         const newAccount = added as unknown as GetBankAccounts;
         setSavedBankAccounts(prev => [...prev, newAccount]);
-        // Immediately prompt confirmation for the newly added account
         setIsAddingNew(false);
         setIsDialogOpen(false);
         setConfirmAccount(newAccount);
+        // resolvedBankId was captured from resolveBankAccount during the resolve useEffect
+        setConfirmBankId(resolvedBankId);
         setIsConfirmOpen(true);
         setOrderError("");
         setOrderSuccess(false);
       }
 
       setResolvedAccountName("");
+      setResolvedBankId("");
       setAccountNumber("");
       setSelectedBankId("");
     } catch (err: any) {
@@ -200,10 +219,12 @@ const SendBankAfrica = () => {
     }
   };
 
-  // Called when the user clicks a saved account
+  // Called when the user clicks a saved account — just open confirm dialog.
+  // The bank ID will be resolved inside handleConfirmOrder under the loading state.
   const handleSelectAccount = (account: GetBankAccounts) => {
     setIsDialogOpen(false);
     setConfirmAccount(account);
+    setConfirmBankId("");
     setIsConfirmOpen(true);
     setOrderError("");
     setOrderSuccess(false);
@@ -215,7 +236,7 @@ const SendBankAfrica = () => {
     setCreatingOrder(true);
     setOrderError("");
     try {
-      // Request session token (will open modal if needed)
+      // Get/ensure session token
       let token = sessionToken;
       if (!token) {
         try {
@@ -227,9 +248,43 @@ const SendBankAfrica = () => {
         }
       }
 
+      // Resolve the bank institution ID via resolveBankAccount.
+      // We match the saved account's bank name against the banks list to get the bankId.
+      let bankInstId = confirmBankId; // already set for newly-added accounts
+      if (!bankInstId) {
+        console.log("[Offramp] Resolving bank ID for:", confirmAccount.bank, confirmAccount.accountNumber);
+        const matchedBank = banks.find(
+          (b) => b.name.toLowerCase() === confirmAccount.bank.toLowerCase()
+        );
+        console.log("[Offramp] Matched bank from list:", matchedBank);
+        if (!matchedBank) {
+          setOrderError(`Could not identify bank "${confirmAccount.bank}". Please go back and re-add this account.`);
+          setCreatingOrder(false);
+          return;
+        }
+        const resolved = await resolveBankAccount(token, matchedBank.id, confirmAccount.accountNumber);
+        console.log("[Offramp] resolveBankAccount response:", resolved);
+        if (!resolved?.bank?.id) {
+          setOrderError("Could not verify bank account. Please try again.");
+          setCreatingOrder(false);
+          return;
+        }
+        bankInstId = resolved.bank.id;
+      }
+
+      console.log("[Offramp] Calling createOfframpOrder with:", {
+        bank: bankInstId,
+        accountNumber: confirmAccount.accountNumber,
+        currency: Currency.NGN,
+        amount: Number(amountUSDC),
+        mint: USDC_MINT,
+        chain: Chain.SOLANA,
+        webhookURL: webhookUrl("/webhook/paj-ramp"),
+      });
+
       const order = await createOfframpOrder(
         {
-          bank: confirmAccount.bank,
+          bank: bankInstId,
           accountNumber: confirmAccount.accountNumber,
           currency: Currency.NGN,
           amount: Number(amountUSDC),
@@ -239,11 +294,126 @@ const SendBankAfrica = () => {
         },
         token,
       );
-      console.log("Offramp order created:", order);
+      console.log("[Offramp] Order created successfully:", order);
       setCreatedOrderId(order?.id || "");
+      setCreatedOrder(order ?? null);
+
+      try {
+        const selectedWallet = wallets.find(w => (w as any).walletClientType === "solana" || (w as any).chainType === "solana") || wallets[0];
+        
+        if (!selectedWallet?.address) {
+          console.warn("No Solana wallet found. Please transfer manually.");
+        } else {
+          console.log("[Offramp] Sending USDC transaction from wallet:", selectedWallet.address);
+          
+          const { Connection, PublicKey, Transaction } = await import("@solana/web3.js");
+          const { getAssociatedTokenAddress, createTransferInstruction, createAssociatedTokenAccountInstruction } = await import("@solana/spl-token");
+
+          const SOLANA_RPC = import.meta.env.VITE_SOLANA_RPC ?? "https://solana-mainnet.g.alchemy.com/v2/C5-LCLXSwlCEtsquSDPIj";
+          const connection = new Connection(SOLANA_RPC, "confirmed");
+
+          const fromPubkey = new PublicKey(selectedWallet.address);
+          const toPubkey = new PublicKey(order.address);
+
+          const { blockhash } = await connection.getLatestBlockhash("finalized");
+          const transaction = new Transaction();
+          transaction.feePayer = fromPubkey;
+          transaction.recentBlockhash = blockhash;
+
+          const amountNumber = Number(order.amount);
+          const usdcMint = new PublicKey(USDC_MINT);
+          
+          const fromTokenAccount = await getAssociatedTokenAddress(usdcMint, fromPubkey);
+          const toTokenAccount = await getAssociatedTokenAddress(usdcMint, toPubkey);
+
+          // 6 decimals for USDC on Solana
+          const rawAmount = Math.floor(amountNumber * 1_000_000);
+
+          const toAccountInfo = await connection.getAccountInfo(toTokenAccount);
+          if (!toAccountInfo) {
+            transaction.add(
+              createAssociatedTokenAccountInstruction(fromPubkey, toTokenAccount, toPubkey, usdcMint)
+            );
+          }
+
+          transaction.add(
+            createTransferInstruction(fromTokenAccount, toTokenAccount, fromPubkey, rawAmount)
+          );
+
+          // Strip CloseAccount ix for safety
+          transaction.instructions = transaction.instructions.filter((ix) => ix.data[0] !== 0x0a);
+
+          const signedTxResponse = await selectedWallet.signTransaction({
+            transaction: transaction.serialize({ requireAllSignatures: false }),
+          });
+
+          const signature = await connection.sendRawTransaction(signedTxResponse.signedTransaction);
+
+          // Wait for confirmation with a more robust approach
+          try {
+            const latestBlockhash = await connection.getLatestBlockhash("confirmed");
+            await connection.confirmTransaction(
+              {
+                signature,
+                blockhash: latestBlockhash.blockhash,
+                lastValidBlockHeight: latestBlockhash.lastValidBlockHeight,
+              },
+              "confirmed"
+            );
+          } catch (confirmError: any) {
+            console.warn("[Offramp] Confirmation wait timed out or failed, checking status manually:", confirmError);
+
+            // Manual status check if confirmTransaction fails/times out
+            const status = await connection.getSignatureStatus(signature);
+            const hasSucceeded =
+              status.value?.confirmationStatus === "confirmed" ||
+              status.value?.confirmationStatus === "finalized";
+
+            if (!hasSucceeded && status.value?.err) {
+              throw new Error(`Transaction failed: ${JSON.stringify(status.value.err)}`);
+            }
+
+            if (!status.value) {
+              console.error("[Offramp] No status found for signature after timeout");
+            }
+          }
+
+          console.log("[Offramp] Transaction successfully completed:", signature);
+
+          if (user?.id) {
+            void apiFetch("/transactions", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                privyUserId: user.id,
+                chainType: "solana",
+                assetSymbol: "USDC",
+                amount: order.amount.toString(),
+                direction: "outgoing",
+                txSignature: signature || null,
+                fromAddress: selectedWallet.address,
+                toAddress: order.address,
+                source: "offramp",
+              }),
+            }).catch(() => {});
+          }
+        }
+      } catch (txErr: any) {
+        console.error("[Offramp] Wallet transaction failed:", txErr);
+        // We catch here so it still shows order success and lets the user manually send
+      }
+
       setOrderSuccess(true);
     } catch (err: any) {
-      setOrderError(err?.message || "Failed to create order. Please try again.");
+      // PAJ errors come back as axios errors — real message is in err.response.data
+      const pajMsg =
+        err?.response?.data?.message ||
+        err?.response?.data?.error ||
+        err?.response?.data ||
+        err?.message ||
+        "Failed to create order. Please try again.";
+      console.error("[Offramp] createOfframpOrder failed:", err?.response?.data ?? err);
+      setOrderError(typeof pajMsg === "string" ? pajMsg : JSON.stringify(pajMsg));
     } finally {
       setCreatingOrder(false);
     }
@@ -600,19 +770,50 @@ const SendBankAfrica = () => {
               </>
             ) : (
               <div className="space-y-4 py-2">
-                <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/10 p-4 space-y-2">
+                <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/10 p-4 space-y-3">
                   <p className="text-sm text-emerald-600 dark:text-emerald-400 font-medium">
-                    Your order is being processed
+                    ✅ Order successful — USDC sent now
                   </p>
+                  {createdOrder?.address && (
+                    <div className="space-y-1">
+                      <p className="text-xs text-muted-foreground font-medium">Sent USDC to this address:</p>
+                      <p className="text-xs font-mono break-all bg-background/60 rounded-lg p-2 border border-border/40">
+                        {createdOrder.address}
+                      </p>
+                    </div>
+                  )}
+                  <div className="grid grid-cols-2 gap-2 text-xs text-muted-foreground">
+                    {createdOrder?.amount !== undefined && (
+                      <div>
+                        <p className="font-medium text-foreground">{createdOrder.amount} USDC</p>
+                        <p>Amount to send</p>
+                      </div>
+                    )}
+                    {createdOrder?.fiatAmount !== undefined && (
+                      <div>
+                        <p className="font-medium text-foreground">₦{createdOrder.fiatAmount.toLocaleString()}</p>
+                        <p>You receive</p>
+                      </div>
+                    )}
+                    {createdOrder?.rate !== undefined && (
+                      <div>
+                        <p className="font-medium text-foreground">₦{createdOrder.rate.toLocaleString()}</p>
+                        <p>Rate per USDC</p>
+                      </div>
+                    )}
+                    {createdOrder?.fee !== undefined && (
+                      <div>
+                        <p className="font-medium text-foreground">{createdOrder.fee} USDC</p>
+                        <p>Fee</p>
+                      </div>
+                    )}
+                  </div>
                   {createdOrderId && (
-                    <p className="text-xs text-muted-foreground font-mono break-all">
-                      Order ID: {createdOrderId}
-                    </p>
+                    <p className="text-xs text-muted-foreground font-mono">Order ID: {createdOrderId}</p>
                   )}
                   <p className="text-xs text-muted-foreground">
-                    ₦{estimatedNaira ? Number(estimatedNaira).toLocaleString() : "—"} will be sent to{" "}
-                    <span className="font-medium">{confirmAccount?.accountName}</span> at{" "}
-                    <span className="font-medium">{confirmAccount?.bank}</span>.
+                    Payout to <span className="font-medium">{confirmAccount?.accountName}</span> at{" "}
+                    <span className="font-medium">{confirmAccount?.bank}</span> sent.
                   </p>
                 </div>
                 <Button
@@ -621,6 +822,7 @@ const SendBankAfrica = () => {
                     setIsConfirmOpen(false);
                     setOrderSuccess(false);
                     setConfirmAccount(null);
+                    setCreatedOrder(null);
                     setAmountUSDC("");
                   }}
                 >

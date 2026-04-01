@@ -14,6 +14,9 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { apiFetch } from "@/services/apiClient";
+import { getAllTransactions } from "paj_ramp";
+import type { PajTransaction } from "paj_ramp";
+import { usePajSession } from "@/hooks/usePajSession";
 
 interface TransactionRow {
   id: number;
@@ -89,6 +92,11 @@ const Home = () => {
   const [stockBalances, setStockBalances] = useState<StockHolding[] | null>(null);
   const [stocksLoading, setStocksLoading] = useState(false);
   const [stocksError, setStocksError] = useState<string | null>(null);
+
+  const { sessionToken } = usePajSession();
+  const [fiatTransactions, setFiatTransactions] = useState<PajTransaction[]>([]);
+  const [fiatLoading, setFiatLoading] = useState(false);
+  const [fiatError, setFiatError] = useState<string | null>(null);
 
   const solanaWallets = wallets.filter((w) => w.walletClientType === "solana");
   const ethereumWallets = wallets.filter((w) => w.walletClientType === "ethereum");
@@ -326,6 +334,24 @@ const Home = () => {
     }
   }, [ready, authenticated, user]);
 
+  useEffect(() => {
+    const fetchFiatTransactions = async () => {
+      if (!sessionToken) return;
+      try {
+        setFiatLoading(true);
+        setFiatError(null);
+        const data = await getAllTransactions(sessionToken);
+        setFiatTransactions(Array.isArray(data) ? data : []);
+      } catch (err: any) {
+        console.error("Failed to load fiat transactions", err);
+        setFiatError(err?.message ?? "Failed to load fiat transactions");
+      } finally {
+        setFiatLoading(false);
+      }
+    };
+    fetchFiatTransactions();
+  }, [sessionToken]);
+
   return (
     <div className="min-h-screen bg-background text-foreground">
       <Navigation />
@@ -481,15 +507,15 @@ const Home = () => {
             {/* Transaction History */}
             <div className="glass-card p-6 order-4">
               <h2 className="text-2xl font-semibold mb-4">Transaction History</h2>
-              {txLoading || savingsLoading ? (
+              {txLoading || savingsLoading || fiatLoading ? (
                 <div className="text-center py-8 text-muted-foreground">
                   <p>Loading transactions...</p>
                 </div>
-              ) : txError || savingsError ? (
+              ) : txError || savingsError || fiatError ? (
                 <div className="text-center py-8 text-red-500 text-sm">
-                  <p>{txError || savingsError}</p>
+                  <p>{txError || savingsError || fiatError}</p>
                 </div>
-              ) : !transactions.length && !savingsActivity.length ? (
+              ) : !transactions.length && !savingsActivity.length && !stockHistory.length && !fiatTransactions.length ? (
                 <div className="text-center py-8 text-muted-foreground">
                   <p>No transactions yet.</p>
                 </div>
@@ -512,10 +538,15 @@ const Home = () => {
                       type: "stock" as const,
                       sortDate: new Date(sh.createdAt).getTime(),
                     })),
+                    ...fiatTransactions.map((ft) => ({
+                      ...ft,
+                      type: "fiat" as const,
+                      sortDate: new Date(ft.createdAt || Date.now()).getTime(),
+                    })),
                   ]
                     .sort((a, b) => b.sortDate - a.sortDate)
                     .map((item, idx) => {
-                      const itemDate = new Date((item as any).createdAt).toLocaleString(undefined, {
+                      const itemDate = new Date((item as any).createdAt || Date.now()).toLocaleString(undefined, {
                         dateStyle: "medium",
                         timeStyle: "short",
                       });
@@ -559,6 +590,29 @@ const Home = () => {
                             </div>
                             <div className="mt-2 sm:mt-0 sm:text-right text-xs text-muted-foreground space-y-1">
                               <div className="font-semibold text-foreground/90">{itemDate}</div>
+                            </div>
+                          </div>
+                        );
+                      } else if (item.type === "fiat") {
+                        const ft = item as PajTransaction;
+                        const isBuy = ft.transactionType === "ON_RAMP";
+                        return (
+                          <div key={`ft-${ft.id}-${idx}`} className="flex flex-col sm:flex-row sm:items-center sm:justify-between p-4 rounded-xl bg-orange-500/5 text-sm border border-orange-500/20 hover:border-orange-500/40 transition-all duration-200">
+                            <div className="space-y-1">
+                              <div className="flex items-center gap-2">
+                                <span className={isBuy ? "text-emerald-500 font-bold" : "text-orange-500 font-bold"}>
+                                  {isBuy ? "Bought USDC (Fiat)" : "Sold USDC (Fiat)"}
+                                </span>
+                                <span className="font-mono text-base font-medium">{ft.usdcAmount ?? ft.amount} USDC</span>
+                              </div>
+                              <div className="text-xs text-muted-foreground opacity-80">
+                                <div><span className="font-medium text-foreground/70">Fiat Amount:</span> ₦{(ft.fiatAmount ?? ft.amount)?.toLocaleString()}</div>
+                                <div><span className="font-medium text-foreground/70">Status:</span> {ft.status}</div>
+                              </div>
+                            </div>
+                            <div className="mt-2 sm:mt-0 sm:text-right text-xs text-muted-foreground space-y-1">
+                              <div className="font-semibold text-foreground/90">{itemDate}</div>
+                              <div className="uppercase tracking-widest text-[10px] font-bold opacity-60">Fiat {isBuy ? "Deposit" : "Withdrawal"}</div>
                             </div>
                           </div>
                         );
