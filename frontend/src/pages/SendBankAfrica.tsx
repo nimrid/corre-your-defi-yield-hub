@@ -80,8 +80,8 @@ const SendBankAfrica = () => {
   const [orderSuccess, setOrderSuccess] = useState(false);
   const [createdOrderId, setCreatedOrderId] = useState("");
   const [createdOrder, setCreatedOrder] = useState<{
-    id: string;
-    address: string;
+    accountNumber: string;
+    currency: Currency;
     amount: number;
     fiatAmount: number;
     rate: number;
@@ -296,7 +296,18 @@ const SendBankAfrica = () => {
       );
       console.log("[Offramp] Order created successfully:", order);
       setCreatedOrderId(order?.id || "");
-      setCreatedOrder(order ?? null);
+      setCreatedOrder(
+        order
+          ? {
+              accountNumber: confirmAccount?.accountNumber ?? "",
+              currency: Currency.NGN,
+              amount: order.amount,
+              fiatAmount: order.fiatAmount,
+              rate: order.rate,
+              fee: order.fee,
+            }
+          : null
+      );
 
       try {
         const selectedWallet = wallets.find(w => (w as any).walletClientType === "solana" || (w as any).chainType === "solana") || wallets[0];
@@ -774,11 +785,11 @@ const SendBankAfrica = () => {
                   <p className="text-sm text-emerald-600 dark:text-emerald-400 font-medium">
                     ✅ Order successful — USDC sent now
                   </p>
-                  {createdOrder?.address && (
+                  {createdOrder?.accountNumber && (
                     <div className="space-y-1">
-                      <p className="text-xs text-muted-foreground font-medium">Sent USDC to this address:</p>
-                      <p className="text-xs font-mono break-all bg-background/60 rounded-lg p-2 border border-border/40">
-                        {createdOrder.address}
+                      <p className="text-xs text-muted-foreground font-medium">Recipient account number</p>
+                      <p className="text-sm font-mono font-semibold text-foreground">
+                        {createdOrder.accountNumber}
                       </p>
                     </div>
                   )}
@@ -786,7 +797,7 @@ const SendBankAfrica = () => {
                     {createdOrder?.amount !== undefined && (
                       <div>
                         <p className="font-medium text-foreground">{createdOrder.amount} USDC</p>
-                        <p>Amount to send</p>
+                        <p>Amount sent</p>
                       </div>
                     )}
                     {createdOrder?.fiatAmount !== undefined && (

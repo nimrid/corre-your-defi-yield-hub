@@ -12,7 +12,7 @@ const SYSTEM_PROMPT = `You are Corre AI, a helpful and professional stock market
 export const fetchStockAdvice = async (chatMessages: Message[]): Promise<string> => {
     const apiKey = import.meta.env.VITE_GROQ_API_KEY;
     if (!apiKey) {
-        throw new Error("API Key not found. Please set VITE_GROQ_API_KEY in your .env");
+        throw new Error("Corre AI is not configured. Please contact support.");
     }
 
     const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
@@ -22,7 +22,7 @@ export const fetchStockAdvice = async (chatMessages: Message[]): Promise<string>
             Authorization: `Bearer ${apiKey}`,
         },
         body: JSON.stringify({
-            model: "openai/gpt-oss-120b",
+            model: "llama-3.1-8b-instant",
             messages: [
                 {
                     role: "system",
@@ -31,14 +31,13 @@ export const fetchStockAdvice = async (chatMessages: Message[]): Promise<string>
                 ...chatMessages,
             ],
             temperature: 1,
-            max_completion_tokens: 8192,
+            max_completion_tokens: 1024,
             top_p: 1,
-            reasoning_effort: "medium",
         }),
     });
 
     if (!response.ok) {
-        throw new Error("Failed to fetch response from Groq API");
+        throw new Error("Corre AI is unavailable. Please try again later.");
     }
 
     const data = await response.json();

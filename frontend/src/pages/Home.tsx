@@ -2,7 +2,8 @@ import Navigation from "@/components/Navigation";
 import { usePrivy, useWallets } from "@privy-io/react-auth";
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Copy, ChevronDown, QrCode, Plus } from "lucide-react";
+import { Copy, ChevronDown, QrCode, Plus, Wallet, ExternalLink, ShieldCheck } from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { US_STOCK_TOKENS } from "@/config/usStockTokens";
 import { QRCodeSVG } from "qrcode.react";
@@ -359,54 +360,95 @@ const Home = () => {
         <h1 className="text-4xl font-bold tracking-tight mb-8">Dashboard</h1>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
           <div className="md:col-span-2 space-y-8">
-            {/* Wallets */}
-            <div className="glass-card p-6">
-              <h2 className="text-2xl font-semibold mb-4">Wallets</h2>
-              <div className="space-y-4">
-                {!walletsReady ? (
-                  <p className="text-sm text-muted-foreground">Loading wallets...</p>
-                ) : (
-                  <>
-                    <details className="rounded-lg bg-secondary/30 p-4" open>
-                      <summary className="cursor-pointer font-semibold">Solana Wallets</summary>
-                      <div className="mt-4 space-y-3">
-                        {solanaWallets.length || linkedSolana.length ? (
-                          <>
-                            {solanaWallets.map((wallet) => (
-                              <WalletRow
-                                key={(wallet as any).id ?? wallet.address ?? Math.random()}
-                                wallet={wallet}
+            {/* Account Card (Combined Balance & Wallets) */}
+            <div className="glass-card p-0 overflow-hidden border-primary/20 shadow-xl transition-all duration-300 hover:border-primary/30">
+              <div className="p-8 bg-gradient-to-br from-primary/10 via-transparent to-accent/5 relative overflow-hidden">
+                <div className="absolute top-0 right-0 -mr-8 -mt-8 w-48 h-48 bg-primary/5 rounded-full blur-3xl pointer-events-none" />
+                <div className="relative z-10 flex flex-col md:flex-row md:items-end justify-between gap-6">
+                  <div className="space-y-4">
+                    <div className="flex items-center gap-2 text-primary group">
+                      <ShieldCheck className="w-4 h-4 group-hover:scale-110 transition-transform" />
+                      <p className="text-xs font-bold uppercase tracking-[0.2em]">Verified Assets</p>
+                    </div>
+                    <div className="space-y-1">
+                      <h2 className="text-muted-foreground text-sm font-medium">Total Balance</h2>
+                      <TotalBalance wallets={[...wallets, ...linkedSolana, ...linkedEthereum]} />
+                    </div>
+                  </div>
+                  <div className="flex gap-2">
+                    <Button 
+                      onClick={() => navigate('/buy-usdc')}
+                      className="rounded-full px-8 py-6 bg-primary text-primary-foreground hover:opacity-90 shadow-lg shadow-primary/20 text-base font-bold"
+                    >
+                      <Plus className="w-5 h-5 mr-2" />
+                      Buy USDC
+                    </Button>
+                  </div>
+                </div>
+              </div>
+
+              <div className="p-8 bg-secondary/10 border-t border-border/40">
+                <div className="flex items-center justify-between mb-6">
+                  <div className="flex items-center gap-2">
+                    <Wallet className="w-5 h-5 text-primary" />
+                    <h3 className="text-lg font-semibold">Your Solana Wallets</h3>
+                  </div>
+                  {!walletsReady && (
+                    <span className="flex items-center gap-2 text-xs text-muted-foreground">
+                      <div className="w-2 h-2 rounded-full bg-primary animate-pulse" />
+                      Syncing...
+                    </span>
+                  )}
+                </div>
+
+                <div className="space-y-3">
+                  {!walletsReady ? (
+                    <div className="space-y-3">
+                      {[1, 2].map((i) => (
+                        <div key={i} className="h-16 rounded-2xl bg-secondary/30 animate-pulse" />
+                      ))}
+                    </div>
+                  ) : (
+                    <>
+                      {solanaWallets.length || linkedSolana.length ? (
+                        <div className="grid grid-cols-1 gap-3">
+                          {solanaWallets.map((wallet) => (
+                            <WalletRow
+                              key={(wallet as any).id ?? wallet.address ?? Math.random()}
+                              wallet={wallet}
+                            />
+                          ))}
+                          {linkedSolana
+                            .filter(
+                              (a: any) =>
+                                !solanaWallets.some(
+                                  (w) => w.address && w.address === a.address
+                                )
+                            )
+                            .map((a: any, idx: number) => (
+                              <LinkedWalletRow
+                                key={`linked-sol-${idx}-${a.address}`}
+                                account={a}
                               />
                             ))}
-                            {linkedSolana
-                              .filter(
-                                (a: any) =>
-                                  !solanaWallets.some(
-                                    (w) => w.address && w.address === a.address
-                                  )
-                              )
-                              .map((a: any, idx: number) => (
-                                <LinkedWalletRow
-                                  key={`linked-sol-${idx}-${a.address}`}
-                                  account={a}
-                                />
-                              ))}
-                          </>
-                        ) : (
+                        </div>
+                      ) : (
+                        <div className="text-center py-6 rounded-2xl bg-secondary/20 border border-dashed border-border/60">
                           <p className="text-sm text-muted-foreground">No Solana wallets connected</p>
-                        )}
-                      </div>
-                    </details>
-                  </>
-                )}
+                          <Button 
+                            variant="link" 
+                            size="sm" 
+                            className="mt-2 text-primary"
+                            onClick={() => navigate('/settings')}
+                          >
+                            Add a wallet
+                          </Button>
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
               </div>
-            </div>
-
-            {/* Balance summary comes before history on mobile */}
-            <div className="glass-card p-6 order-2 md:order-2">
-              <h2 className="text-2xl font-semibold mb-4">Balance</h2>
-              {/* Include both connected and linked wallets when computing total */}
-              <TotalBalance wallets={[...wallets, ...linkedSolana, ...linkedEthereum]} />
             </div>
 
             <div className="glass-card p-6 order-3 md:order-3">
@@ -852,15 +894,7 @@ const TotalBalance = ({ wallets }: { wallets: any[] }) => {
 
   return (
     <div className="flex items-center gap-3">
-      <p className="text-2xl font-bold">{total}</p>
-      <button
-        onClick={() => navigate('/buy-usdc')}
-        className="flex items-center gap-1.5 px-3 py-1 text-sm font-medium rounded-full bg-primary/10 text-primary hover:bg-primary/20 transition-colors"
-        title="Buy USDC with Naira"
-      >
-        <Plus className="w-4 h-4" />
-        Buy
-      </button>
+      <p className="text-5xl font-black tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-foreground via-foreground to-foreground/50">{total}</p>
     </div>
   );
 };
@@ -901,6 +935,7 @@ const WalletQRDialog = ({ address, label }: { address: string; label: string }) 
 };
 
 const WalletRow = ({ wallet }: { wallet: any }) => {
+  const { toast } = useToast();
   const [resolvedAddress, setResolvedAddress] = useState<string | undefined>(wallet.address);
 
   useEffect(() => {
@@ -915,7 +950,6 @@ const WalletRow = ({ wallet }: { wallet: any }) => {
           }
         }
       } catch { }
-      // Fallbacks
       try {
         if (mounted && wallet.address) setResolvedAddress(wallet.address);
       } catch { }
@@ -924,53 +958,94 @@ const WalletRow = ({ wallet }: { wallet: any }) => {
     return () => { mounted = false; };
   }, [wallet]);
 
+  const truncateAddress = (addr: string) => {
+    if (!addr) return "";
+    return `${addr.slice(0, 6)}...${addr.slice(-4)}`;
+  };
+
+  const handleCopy = (addr: string) => {
+    navigator.clipboard.writeText(addr).then(() => {
+      toast({
+        title: "Copied!",
+        description: "Address copied to clipboard",
+        duration: 2000,
+      });
+    }).catch(() => { });
+  };
+
   return (
-    <div className="flex justify-between items-center p-4 rounded-lg bg-secondary/30">
-      <div>
-        <p className="text-sm text-muted-foreground">{wallet.walletClientType} · {wallet.chainType}{wallet.chainId ? ` · chainId ${wallet.chainId}` : ''}</p>
+    <div className="flex justify-between items-center p-5 rounded-2xl bg-background/40 hover:bg-background/60 border border-primary/5 hover:border-primary/20 transition-all duration-200 group shadow-sm">
+      <div className="flex-1">
+        <p className="text-[10px] font-bold uppercase tracking-widest text-primary mb-1 opacity-70 group-hover:opacity-100 transition-opacity">
+          {wallet.walletClientType} · Solana
+        </p>
         <div className="flex items-center gap-2">
-          <p className="font-mono break-all">{resolvedAddress ?? 'Resolving address...'}</p>
+          <p className="font-mono text-sm font-medium truncate max-w-[200px]">
+            {resolvedAddress ? truncateAddress(resolvedAddress) : 'Resolving...'}
+          </p>
           {resolvedAddress && (
-            <>
+            <div className="flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
               <button
                 type="button"
-                onClick={() => navigator.clipboard.writeText(resolvedAddress).catch(() => { })}
-                className="p-1 rounded hover:bg-secondary focus:outline-none focus:ring-2 focus:ring-primary"
+                onClick={() => handleCopy(resolvedAddress)}
+                className="p-1.5 rounded-lg hover:bg-secondary text-muted-foreground hover:text-primary transition-all focus:outline-none"
                 title="Copy Address"
               >
-                <Copy className="w-4 h-4" />
+                <Copy className="w-3.5 h-3.5" />
               </button>
               <WalletQRDialog address={resolvedAddress} label={wallet.walletClientType} />
-            </>
+            </div>
           )}
         </div>
       </div>
-      <Balance wallet={wallet} address={resolvedAddress} />
+      <div className="text-right text-primary">
+        <Balance wallet={wallet} address={resolvedAddress} />
+      </div>
     </div>
   );
 };
 
 const LinkedWalletRow = ({ account }: { account: any }) => {
+  const { toast } = useToast();
   const address = account.address as string | undefined;
 
+  const truncateAddress = (addr: string) => {
+    if (!addr) return "";
+    return `${addr.slice(0, 6)}...${addr.slice(-4)}`;
+  };
+
+  const handleCopy = (addr: string) => {
+    navigator.clipboard.writeText(addr).then(() => {
+      toast({
+        title: "Copied!",
+        description: "Address copied to clipboard",
+        duration: 2000,
+      });
+    }).catch(() => { });
+  };
+
   return (
-    <div className="flex justify-between items-center p-4 rounded-lg bg-secondary/30">
-      <div>
-        <p className="text-sm text-muted-foreground">Linked · {account.chainType ?? account.chain ?? "unknown"}</p>
+    <div className="flex justify-between items-center p-5 rounded-2xl bg-background/40 hover:bg-background/60 border border-border/40 hover:border-primary/20 transition-all duration-200 group shadow-sm">
+      <div className="flex-1">
+        <p className="text-[10px] font-bold uppercase tracking-widest text-primary mb-1 opacity-70 group-hover:opacity-100 transition-opacity">
+          Linked · {account.chainType ?? account.chain ?? "Solana"}
+        </p>
         <div className="flex items-center gap-2">
-          <p className="font-mono break-all">{address ?? "Unknown address"}</p>
+          <p className="font-mono text-sm font-medium">
+            {address ? truncateAddress(address) : "Unknown address"}
+          </p>
           {address && (
-            <>
+            <div className="flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
               <button
                 type="button"
-                onClick={() => navigator.clipboard.writeText(address).catch(() => { })}
-                className="p-1 rounded hover:bg-secondary focus:outline-none focus:ring-2 focus:ring-primary"
+                onClick={() => handleCopy(address)}
+                className="p-1.5 rounded-lg hover:bg-secondary text-muted-foreground hover:text-primary transition-all focus:outline-none"
                 title="Copy Address"
               >
-                <Copy className="w-4 h-4" />
+                <Copy className="w-3.5 h-3.5" />
               </button>
               <WalletQRDialog address={address} label="Linked Wallet" />
-            </>
+            </div>
           )}
         </div>
       </div>
