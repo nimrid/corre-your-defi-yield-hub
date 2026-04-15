@@ -218,9 +218,8 @@ const InvestStockDetails = () => {
           setUserShares(null);
         }
 
-        // 2) Fetch USDC balance from Jupiter holdings API using user's Solana wallet
-        const apiKey = import.meta.env.VITE_JUP_API_KEY as string | undefined;
-        if (!apiKey) return;
+        // 2) Fetch USDC balance via Alchemy RPC to display the actual wallet balance
+        let ownerAddress: string | undefined;
 
         const solWallet = wallets.find(
           (w: any) =>
@@ -229,15 +228,25 @@ const InvestStockDetails = () => {
             w.chain === "solana"
         ) as any;
 
-        if (!solWallet) return;
-
-        let ownerAddress: string | undefined = solWallet.address;
-        if (!ownerAddress && typeof solWallet.getAddress === "function") {
-          try {
-            ownerAddress = await solWallet.getAddress();
-          } catch {
-            ownerAddress = undefined;
+        if (solWallet) {
+          ownerAddress = solWallet.address;
+          if (!ownerAddress && typeof solWallet.getAddress === "function") {
+            try {
+              ownerAddress = await solWallet.getAddress();
+            } catch {
+              ownerAddress = undefined;
+            }
           }
+        }
+
+        if (!ownerAddress && user) {
+          const linkedWallets = (user.linkedAccounts ?? []).filter(
+            (a: any) => a.type === "wallet" || a.type === "smart_wallet"
+          );
+          const linkedSolana = linkedWallets.filter(
+            (a: any) => a.chainType === "solana" || a.chain === "solana"
+          );
+          ownerAddress = (linkedSolana[0] as any)?.address;
         }
 
         if (!ownerAddress) {
@@ -245,31 +254,21 @@ const InvestStockDetails = () => {
           return;
         }
 
-        const holdingsUrl = `https://api.jup.ag/ultra/v1/holdings/${ownerAddress}`;
-
-        const resHoldings = await fetch(holdingsUrl, {
-          method: "GET",
-          headers: {
-            "x-api-key": apiKey,
-          },
-        });
-
-        if (!resHoldings.ok) {
-          setUsdcBalance(null);
-          return;
-        }
-
-        const data: any = await resHoldings.json();
-        const tokens = data?.tokens ?? {};
-
-        // USDC balance (Solana USDC)
-        const USDC_MINT = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
-        const usdcArray = tokens[USDC_MINT];
-        if (Array.isArray(usdcArray) && usdcArray.length > 0) {
-          const usdcEntry = usdcArray[0];
-          const usdcUi = usdcEntry?.uiAmountString as string | undefined;
-          setUsdcBalance(usdcUi ?? null);
-        } else {
+        try {
+          const { Connection, PublicKey } = await import("@solana/web3.js");
+          const connection = new Connection("https://solana-mainnet.g.alchemy.com/v2/C5-LCLXSwlCEtsquSDPIj", "confirmed");
+          const owner = new PublicKey(ownerAddress);
+          const USDC_MINT = new PublicKey("EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"); // Solana USDC
+          
+          const resp = await connection.getParsedTokenAccountsByOwner(owner, { mint: USDC_MINT });
+          const ui = resp.value.reduce((sum, acc: any) => {
+            const amt = acc?.account?.data?.parsed?.info?.tokenAmount?.uiAmount ?? 0;
+            return sum + Number(amt || 0);
+          }, 0);
+          
+          setUsdcBalance(Number(ui).toLocaleString(undefined, { maximumFractionDigits: 4 }));
+        } catch (err) {
+          console.error("Failed to fetch USDC balance via RPC", err);
           setUsdcBalance(null);
         }
       } catch {

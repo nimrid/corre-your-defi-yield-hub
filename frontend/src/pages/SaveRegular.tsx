@@ -517,10 +517,10 @@ const SaveRegular = () => {
         <div className="glass-card p-6 sm:p-8 rounded-2xl space-y-6">
           <div className="space-y-2">
             <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">
-              Regular save
+              Standard save
             </h1>
             <p className="text-sm text-muted-foreground">
-              Deposit USDC into the regular DeFi savings vault.
+              Deposit USDC into the standard DeFi savings vault.
             </p>
           </div>
 
@@ -532,7 +532,7 @@ const SaveRegular = () => {
             ) : (
               <div className="grid grid-cols-2 gap-4">
                 <div className="min-w-0">
-                  <p className="text-muted-foreground truncate">Regular balance</p>
+                  <p className="text-muted-foreground truncate">Standard balance</p>
                   <p
                     className="font-semibold break-all"
                     title={
@@ -579,7 +579,7 @@ const SaveRegular = () => {
             ) : pendingWithdrawal ? (
               <>
                 <p className="text-muted-foreground">
-                  Pending regular withdrawal ID {pendingWithdrawal.withdrawalId}
+                  Pending standard withdrawal ID {pendingWithdrawal.withdrawalId}
                 </p>
                 <p className="text-muted-foreground">
                   Amount (native): {pendingWithdrawal.nativeAmount}
@@ -591,7 +591,7 @@ const SaveRegular = () => {
                 )}
               </>
             ) : (
-              <p className="text-muted-foreground">No pending regular withdrawals.</p>
+              <p className="text-muted-foreground">No pending standard withdrawals.</p>
             )}
           </div>
 

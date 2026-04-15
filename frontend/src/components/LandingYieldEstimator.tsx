@@ -18,7 +18,7 @@ const LandingYieldEstimator = () => {
     // Estimator States
     const [depositAmount, setDepositAmount] = useState<string>("1000");
     const [durationMonths, setDurationMonths] = useState<string>("12");
-    const [selectedPool, setSelectedPool] = useState<"Regular" | "Protected">("Regular");
+    const [selectedPool, setSelectedPool] = useState<"Standard" | "Shielded">("Standard");
 
     useEffect(() => {
         const fetchPools = async () => {
@@ -58,11 +58,11 @@ const LandingYieldEstimator = () => {
     const getSelectedApy = () => {
         // If no real APY is available yet (or loading), default to a compelling but realistic placeholder
         if (loading || !regular) {
-            return selectedPool === "Regular" ? 0.08 : 0.05; // 8% and 5% fallback APY
+            return selectedPool === "Standard" ? 0.08 : 0.05; // 8% and 5% fallback APY
         }
 
-        if (selectedPool === "Regular") return regular?.apy || 0.08;
-        if (selectedPool === "Protected") return protectedPool?.apy || 0.05;
+        if (selectedPool === "Standard") return regular?.apy || 0.08;
+        if (selectedPool === "Shielded") return protectedPool?.apy || 0.05;
         return 0;
     };
 
@@ -93,7 +93,7 @@ const LandingYieldEstimator = () => {
                         See exactly how <span className="gradient-text">much you could earn</span>
                     </h2>
                     <p className="text-lg text-muted-foreground">
-                        Don't leave money on the table. With our battle-tested smart routing, your USDC earns the highest available yields securely. Compare our regular and protected vaults and see the power of compound interest working for you.
+                        Don't leave money on the table. With our battle-tested smart routing, your USDC earns the highest available yields securely. Compare our standard and shielded vaults and see the power of compound interest working for you.
                     </p>
                     <ul className="space-y-3 pt-4 border-t border-border/50">
                         <li className="flex items-center gap-3 text-muted-foreground">
@@ -161,23 +161,23 @@ const LandingYieldEstimator = () => {
                                 <div className="flex gap-2">
                                     <button
                                         type="button"
-                                        onClick={() => setSelectedPool("Regular")}
-                                        className={`flex-1 py-3 px-4 rounded-xl text-sm font-bold transition-all ${selectedPool === "Regular"
+                                        onClick={() => setSelectedPool("Standard")}
+                                        className={`flex-1 py-3 px-4 rounded-xl text-sm font-bold transition-all ${selectedPool === "Standard"
                                             ? "bg-primary text-primary-foreground shadow-lg shadow-primary/25 border-transparent"
                                             : "bg-background border border-border text-muted-foreground hover:bg-secondary/50"
                                             }`}
                                     >
-                                        Regular Vault
+                                        Standard Vault
                                     </button>
                                     <button
                                         type="button"
-                                        onClick={() => setSelectedPool("Protected")}
-                                        className={`flex-1 py-3 px-4 rounded-xl text-sm font-bold transition-all ${selectedPool === "Protected"
+                                        onClick={() => setSelectedPool("Shielded")}
+                                        className={`flex-1 py-3 px-4 rounded-xl text-sm font-bold transition-all ${selectedPool === "Shielded"
                                             ? "bg-primary text-primary-foreground shadow-lg shadow-primary/25 border-transparent"
                                             : "bg-background border border-border text-muted-foreground hover:bg-secondary/50"
                                             }`}
                                     >
-                                        Protected Vault
+                                        Shielded Vault
                                     </button>
                                 </div>
                             </div>

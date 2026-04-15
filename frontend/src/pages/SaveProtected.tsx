@@ -307,17 +307,17 @@ const SaveProtected = () => {
         <div className="glass-card p-6 sm:p-8 rounded-2xl space-y-6">
           <div className="space-y-2">
             <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">
-              Protected save
+              Shielded save
             </h1>
             <p className="text-sm text-muted-foreground">
-              Deposit USDC into the protected DeFi savings vault.
+              Deposit USDC into the shielded DeFi savings vault.
             </p>
           </div>
 
           <div className="rounded-xl border border-border/60 bg-secondary/30 px-4 py-3 text-sm">
             <div className="grid grid-cols-2 gap-4">
               <div className="min-w-0">
-                <p className="text-muted-foreground truncate">Protected balance</p>
+                <p className="text-muted-foreground truncate">Shielded balance</p>
                 <p
                   className="font-semibold break-all"
                   title={protectedBalance !== null ? `${protectedBalance.toFixed(2)} USDC` : undefined}

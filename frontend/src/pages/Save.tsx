@@ -19,7 +19,7 @@ const Save = () => {
   // Estimator States
   const [depositAmount, setDepositAmount] = useState<string>("1000");
   const [durationMonths, setDurationMonths] = useState<string>("12");
-  const [selectedPool, setSelectedPool] = useState<"Regular" | "Protected">("Regular");
+  const [selectedPool, setSelectedPool] = useState<"Standard" | "Shielded">("Standard");
 
   useEffect(() => {
     const fetchPools = async () => {
@@ -68,8 +68,8 @@ const Save = () => {
   }, []);
 
   const getSelectedApy = () => {
-    if (selectedPool === "Regular") return regular?.apy || 0;
-    if (selectedPool === "Protected") return protectedPool?.apy || 0;
+    if (selectedPool === "Standard") return regular?.apy || 0;
+    if (selectedPool === "Shielded") return protectedPool?.apy || 0;
     return 0;
   };
 
@@ -115,7 +115,7 @@ const Save = () => {
             <div className="space-y-8">
               <div className="grid gap-4 md:grid-cols-2">
                 <div className="glass-card p-4 rounded-xl border border-border/60 flex flex-col justify-between">
-                  <h2 className="text-lg font-semibold mb-1">Regular</h2>
+                  <h2 className="text-lg font-semibold mb-1">Standard</h2>
                   <p className="text-sm text-muted-foreground mb-3">
                     Standard saving with variable APY.
                   </p>
@@ -127,14 +127,14 @@ const Save = () => {
                     className="mt-auto inline-flex items-center justify-center rounded-full bg-primary text-primary-foreground px-4 py-2 text-sm font-medium hover:opacity-90 transition"
                     onClick={() => navigate("/save/regular")}
                   >
-                    Regular vault
+                    Standard vault
                   </button>
                 </div>
 
                 <div className="glass-card p-4 rounded-xl border border-border/60 flex flex-col justify-between">
-                  <h2 className="text-lg font-semibold mb-1">Protected</h2>
+                  <h2 className="text-lg font-semibold mb-1">Shielded</h2>
                   <p className="text-sm text-muted-foreground mb-3">
-                    Protected saving option with its own APY.
+                    Shielded saving option with its own APY.
                   </p>
                   <p className="text-2xl font-bold mb-4">
                     {formatApy(protectedPool?.apy)}
@@ -144,7 +144,7 @@ const Save = () => {
                     className="mt-auto inline-flex items-center justify-center rounded-full bg-primary text-primary-foreground px-4 py-2 text-sm font-medium hover:opacity-90 transition"
                     onClick={() => navigate("/save/protected")}
                   >
-                    Protected vault
+                    Shielded vault
                   </button>
                 </div>
               </div>
@@ -193,23 +193,23 @@ const Save = () => {
                       <div className="flex gap-2">
                         <button
                           type="button"
-                          onClick={() => setSelectedPool("Regular")}
-                          className={`flex-1 py-2.5 px-4 rounded-xl text-sm font-medium transition-all ${selectedPool === "Regular"
+                          onClick={() => setSelectedPool("Standard")}
+                          className={`flex-1 py-2.5 px-4 rounded-xl text-sm font-medium transition-all ${selectedPool === "Standard"
                             ? "bg-primary text-primary-foreground shadow-md shadow-primary/20"
                             : "bg-secondary/50 text-secondary-foreground hover:bg-secondary/80"
                             }`}
                         >
-                          Regular ({formatApy(regular?.apy)})
+                          Standard ({formatApy(regular?.apy)})
                         </button>
                         <button
                           type="button"
-                          onClick={() => setSelectedPool("Protected")}
-                          className={`flex-1 py-2.5 px-4 rounded-xl text-sm font-medium transition-all ${selectedPool === "Protected"
+                          onClick={() => setSelectedPool("Shielded")}
+                          className={`flex-1 py-2.5 px-4 rounded-xl text-sm font-medium transition-all ${selectedPool === "Shielded"
                             ? "bg-primary text-primary-foreground shadow-md shadow-primary/20"
                             : "bg-secondary/50 text-secondary-foreground hover:bg-secondary/80"
                             }`}
                         >
-                          Protected ({formatApy(protectedPool?.apy)})
+                          Shielded ({formatApy(protectedPool?.apy)})
                         </button>
                       </div>
                     </div>

@@ -67,10 +67,10 @@ interface SavingsActivityRow {
 
 const formatVaultLabel = (value: string): string => {
   if (value === "lulo_vault_regular") {
-    return "Regular savings vault";
+    return "Standard savings vault";
   }
   if (value === "lulo_vault_protected") {
-    return "Protected savings vault";
+    return "Shielded savings vault";
   }
   return value;
 };
@@ -627,7 +627,7 @@ const Home = () => {
                                 <span className="font-mono text-base font-medium">{sa.amount} USDC</span>
                               </div>
                               <div className="text-xs text-muted-foreground opacity-80">
-                                <span className="font-medium text-foreground/70">Vault:</span> {sa.vaultType === "regular" ? "Regular Yield" : "Protected Yield"}
+                                <span className="font-medium text-foreground/70">Vault:</span> {sa.vaultType === "regular" ? "Standard Yield" : "Shielded Yield"}
                               </div>
                             </div>
                             <div className="mt-2 sm:mt-0 sm:text-right text-xs text-muted-foreground space-y-1">
