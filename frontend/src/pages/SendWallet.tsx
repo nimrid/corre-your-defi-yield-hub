@@ -83,6 +83,9 @@ const SendWallet = () => {
     try {
       setLoading(true);
 
+      let useGasSponsorship = false;
+      let feePayerAddress = "";
+
       // Check gas sponsorship eligibility first
       try {
         const eligibilityResponse = await apiFetch("/gas-sponsorship/check", {
@@ -114,6 +117,9 @@ const SendWallet = () => {
             eligibility.reason ||
             "This amount is above the limit for gas sponsorship. Network fees will be paid from your wallet.",
           );
+        } else if (eligibility.feePayerAddress) {
+          useGasSponsorship = true;
+          feePayerAddress = eligibility.feePayerAddress;
         }
       } catch (eligibilityError) {
         console.error("Eligibility check error:", eligibilityError);
@@ -125,6 +131,8 @@ const SendWallet = () => {
         Connection,
         PublicKey,
         Transaction,
+        VersionedTransaction,
+        TransactionMessage,
         SystemProgram,
         LAMPORTS_PER_SOL,
       } = await import("@solana/web3.js");
@@ -134,21 +142,24 @@ const SendWallet = () => {
         createAssociatedTokenAccountInstruction,
       } = await import("@solana/spl-token");
 
-      const SOLANA_RPC =
-        import.meta.env.VITE_SOLANA_RPC ??
-        "https://solana-mainnet.g.alchemy.com/v2/C5-LCLXSwlCEtsquSDPIj";
+      const rawSolanaRpc = import.meta.env.VITE_SOLANA_RPC ?? "https://solana-mainnet.g.alchemy.com/v2/C5-LCLXSwlCEtsquSDPIj";
+      const rawWsRpc = import.meta.env.VITE_SOLANA_WS_RPC ?? "wss://mainnet.helius-rpc.com/?api-key=41c75a65-eb0d-4509-9851-7ba59261081a";
+      
+      const SOLANA_RPC = rawSolanaRpc.replace(/^['"]|['"]$/g, "").trim();
+      const SOLANA_WS_RPC = rawWsRpc.replace(/^['"]|['"]$/g, "").trim();
 
-      const connection = new Connection(SOLANA_RPC, "confirmed");
+      const connection = new Connection(SOLANA_RPC, {
+        commitment: "confirmed",
+        wsEndpoint: SOLANA_WS_RPC
+      });
 
       const fromPubkey = new PublicKey(selectedWallet.address);
       const toPubkey = new PublicKey(address);
 
-      const { blockhash } = await connection.getLatestBlockhash("finalized");
-      const transaction = new Transaction();
-      transaction.feePayer = fromPubkey;
-      transaction.recentBlockhash = blockhash;
+      const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash("confirmed");
 
       const amountNumber = Number(amount);
+      const instructions: any[] = [];
 
       if (token === "SOL") {
         const rawAmount = Math.floor(amountNumber * LAMPORTS_PER_SOL);
@@ -157,7 +168,7 @@ const SendWallet = () => {
           toPubkey,
           lamports: rawAmount,
         });
-        transaction.add(transferIx);
+        instructions.push(transferIx);
       } else {
         const usdcMint = new PublicKey(USDC_MINT);
         const fromTokenAccount = await getAssociatedTokenAddress(usdcMint, fromPubkey);
@@ -175,7 +186,7 @@ const SendWallet = () => {
             toPubkey, // owner
             usdcMint // mint
           );
-          transaction.add(createAccountIx);
+          instructions.push(createAccountIx);
         }
 
         // Add the transfer instruction
@@ -185,32 +196,80 @@ const SendWallet = () => {
           fromPubkey,
           rawAmount
         );
-        transaction.add(transferIx);
+        instructions.push(transferIx);
       }
 
       // Security: Strip CloseAccount instructions to prevent rent refund exploitation
       // See: https://docs.privy.io/wallets/gas-and-asset-management/gas/security
-      transaction.instructions = transaction.instructions.filter((instruction) => {
+      const filteredInstructions = instructions.filter((instruction) => {
         // CloseAccount instruction has discriminator 0x0a (10 in decimal)
-        const discriminator = instruction.data[0];
-        return discriminator !== 0x0a;
+        if (instruction.data && instruction.data.length > 0) {
+          const discriminator = instruction.data[0];
+          return discriminator !== 0x0a;
+        }
+        return true;
       });
 
-      // Use Privy wallet client to sign and send transaction
-      const signedTxResponse = await selectedWallet.signTransaction({
-        transaction: transaction.serialize({ requireAllSignatures: false }),
-      });
+      let signature = "";
 
-      const signature = await connection.sendRawTransaction(signedTxResponse.signedTransaction);
+      if (useGasSponsorship) {
+        const message = new TransactionMessage({
+          payerKey: new PublicKey(feePayerAddress),
+          recentBlockhash: blockhash,
+          instructions: filteredInstructions
+        }).compileToV0Message();
+
+        const versionedTransaction = new VersionedTransaction(message);
+
+        // Use native signTransaction to apply the user's signature. 
+        // We do NOT broadcast it here; we just serialize the signed transaction to send to backend.
+        const signedTxResponse = await (selectedWallet as any).signTransaction({
+           transaction: versionedTransaction.serialize()
+        });
+
+        const serializedTransaction = Buffer.from(signedTxResponse.signedTransaction).toString('base64');
+
+        const sponsorRes = await apiFetch('/gas-sponsorship/sponsor-transaction', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ transaction: serializedTransaction })
+        });
+
+        if (!sponsorRes.ok) {
+          let errText = await sponsorRes.text();
+          try {
+            const errObj = JSON.parse(errText);
+            errText = errObj.error || errText;
+          } catch(e) {}
+          throw new Error(`Sponsorship failed: ${errText}`);
+        }
+
+        const sponsorData = await sponsorRes.json();
+        signature = sponsorData.transactionHash;
+      } else {
+        const transaction = new Transaction();
+        transaction.feePayer = fromPubkey;
+        transaction.recentBlockhash = blockhash;
+        
+        for (const ix of filteredInstructions) {
+          transaction.add(ix);
+        }
+
+        // Use Privy wallet client to sign and send transaction
+        const signedTxResponse = await selectedWallet.signTransaction({
+          transaction: transaction.serialize({ requireAllSignatures: false }),
+        });
+
+        signature = await connection.sendRawTransaction(signedTxResponse.signedTransaction);
+      }
 
       // Wait for confirmation with a more robust approach
       try {
-        const latestBlockhash = await connection.getLatestBlockhash("confirmed");
         await connection.confirmTransaction(
           {
             signature,
-            blockhash: latestBlockhash.blockhash,
-            lastValidBlockHeight: latestBlockhash.lastValidBlockHeight,
+            blockhash: blockhash,
+            lastValidBlockHeight: lastValidBlockHeight,
           },
           "confirmed"
         );

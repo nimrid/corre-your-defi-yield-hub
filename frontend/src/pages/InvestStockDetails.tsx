@@ -98,9 +98,11 @@ const InvestStockDetails = () => {
   const [usdcInput, setUsdcInput] = useState<string>("");
   const [quoteLoading, setQuoteLoading] = useState(false);
   const [quoteError, setQuoteError] = useState<string | null>(null);
-  const [outAmount, setOutAmount] = useState<string | null>(null);
+  const [outAmount, setOutAmount] = useState<string | null>(null); // display string
+  const [outAmountRaw, setOutAmountRaw] = useState<string | null>(null); // raw numeric for DB
   const [requestId, setRequestId] = useState<string | null>(null);
   const [unsignedTx, setUnsignedTx] = useState<string | null>(null);
+  const [lastValidBlockHeight, setLastValidBlockHeight] = useState<string | null>(null);
   const [executeLoading, setExecuteLoading] = useState(false);
   const [executeError, setExecuteError] = useState<string | null>(null);
   const [executeSuccess, setExecuteSuccess] = useState<string | null>(null);
@@ -109,9 +111,11 @@ const InvestStockDetails = () => {
   const [sellInput, setSellInput] = useState<string>("");
   const [sellQuoteLoading, setSellQuoteLoading] = useState(false);
   const [sellQuoteError, setSellQuoteError] = useState<string | null>(null);
-  const [sellOutUsdc, setSellOutUsdc] = useState<string | null>(null);
+  const [sellOutUsdc, setSellOutUsdc] = useState<string | null>(null); // display string
+  const [sellOutUsdcRaw, setSellOutUsdcRaw] = useState<string | null>(null); // raw numeric for DB
   const [sellRequestId, setSellRequestId] = useState<string | null>(null);
   const [sellUnsignedTx, setSellUnsignedTx] = useState<string | null>(null);
+  const [sellLastValidBlockHeight, setSellLastValidBlockHeight] = useState<string | null>(null);
   const [sellExecuteLoading, setSellExecuteLoading] = useState(false);
   const [sellExecuteError, setSellExecuteError] = useState<string | null>(null);
   const [sellExecuteSuccess, setSellExecuteSuccess] = useState<string | null>(null);
@@ -447,6 +451,7 @@ const InvestStockDetails = () => {
                     setOutAmount(null);
                     setRequestId(null);
                     setUnsignedTx(null);
+                    setLastValidBlockHeight(null);
                     setExecuteError(null);
                     setExecuteSuccess(null);
                   }}
@@ -463,6 +468,7 @@ const InvestStockDetails = () => {
                     setSellOutUsdc(null);
                     setSellRequestId(null);
                     setSellUnsignedTx(null);
+                    setSellLastValidBlockHeight(null);
                     setSellExecuteError(null);
                     setSellExecuteSuccess(null);
                     setSellInput("");
@@ -508,6 +514,7 @@ const InvestStockDetails = () => {
                   setOutAmount(null);
                   setRequestId(null);
                   setUnsignedTx(null);
+                  setLastValidBlockHeight(null);
                   setExecuteError(null);
                   setExecuteSuccess(null);
 
@@ -542,7 +549,7 @@ const InvestStockDetails = () => {
 
                     // amount in base units (USDC has 6 decimals)
                     const rawAmount = Math.round(parsed * 1_000_000);
-                    const base = "https://api.jup.ag/ultra/v1/order";
+                    const base = "https://api.jup.ag/swap/v2/order";
                     const params = new URLSearchParams({
                       inputMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
                       outputMint: token.address,
@@ -558,32 +565,59 @@ const InvestStockDetails = () => {
                       },
                     });
 
+                    // Always parse the body so we can surface the real error message
+                    const data: any = await res.json().catch(() => null);
+                    // eslint-disable-next-line no-console
+                    console.debug("[InvestStockDetails] Buy order response", { status: res.status, data });
+
                     if (!res.ok) {
-                      throw new Error(`Failed to quote order: ${res.status}`);
+                      const apiMsg =
+                        data?.error ??
+                        data?.message ??
+                        data?.detail ??
+                        `Jupiter API error ${res.status}`;
+                      throw new Error(apiMsg);
                     }
 
-                    const data: any = await res.json();
-                    if (import.meta.env.DEV) {
-                      // eslint-disable-next-line no-console
-                      console.debug("[InvestStockDetails] Order quote response", data);
+                    // Surface API-level errors even on 200 OK
+                    if (data?.error || data?.message) {
+                      const apiMsg = data?.error ?? data?.message;
+                      throw new Error(apiMsg);
                     }
-                    const outAmountRaw = data?.outAmount as string | undefined;
-                    const tx = data?.transaction as string | undefined; // unsigned serialized tx (base64)
+
+                    const rawOutStr = data?.outAmount as string | undefined;
+                    const tx = data?.transaction as string | undefined;
                     const reqId = data?.requestId as string | undefined;
+                    // lastValidBlockHeight can come as a number or string
+                    const lvbh = data?.lastValidBlockHeight != null
+                      ? String(data.lastValidBlockHeight)
+                      : undefined;
 
-                      if (!outAmountRaw) {
+                    if (!rawOutStr || !tx || !reqId) {
                       setOutAmount(null);
+                      setOutAmountRaw(null);
                       setRequestId(null);
+                      setUnsignedTx(null);
+                      setLastValidBlockHeight(null);
+                      // Show which field is actually missing to help debug
+                      const missing = [!rawOutStr && "outAmount", !tx && "transaction", !reqId && "requestId"]
+                        .filter(Boolean).join(", ");
+                      setQuoteError(`Incomplete quote response (missing: ${missing}). Token may not be tradeable via this route.`);
                       return;
                     }
 
-                    // Assume stock tokens use 6 decimals; then divide by 100 before displaying
-                    const outNumber = Number(outAmountRaw) / 1_000_000 / 100;
-                    setOutAmount(outNumber.toLocaleString(undefined, {
-                      maximumFractionDigits: 6,
-                    }));
-                    setUnsignedTx(tx ?? null);
-                    setRequestId(reqId ?? null);
+                    // Use the token's actual decimals to convert from base units
+                    const buyDecimals =
+                      typeof token.decimals === "number" && !Number.isNaN(token.decimals)
+                        ? token.decimals
+                        : 6;
+                    const outNumber = Number(rawOutStr) / 10 ** buyDecimals;
+                    // Store locale-formatted version for display, raw numeric string for DB
+                    setOutAmount(outNumber.toLocaleString(undefined, { maximumFractionDigits: 6 }));
+                    setOutAmountRaw(String(outNumber)); // clean numeric, no commas
+                    setUnsignedTx(tx);
+                    setRequestId(reqId);
+                    setLastValidBlockHeight(lvbh ?? null);
                   } catch (err: any) {
                     // Always log quote errors to the console so issues are visible
                     // eslint-disable-next-line no-console
@@ -690,7 +724,7 @@ const InvestStockDetails = () => {
                     signResult?.signedTransaction ?? signResult;
                   const signedBase64 = uint8ArrayToBase64(signedBytes);
 
-                  const res = await fetch("https://api.jup.ag/ultra/v1/execute", {
+                  const res = await fetch("https://api.jup.ag/swap/v2/execute", {
                     method: "POST",
                     headers: {
                       "Content-Type": "application/json",
@@ -699,6 +733,7 @@ const InvestStockDetails = () => {
                     body: JSON.stringify({
                       signedTransaction: signedBase64,
                       requestId,
+                      lastValidBlockHeight: lastValidBlockHeight ?? undefined,
                     }),
                   });
 
@@ -762,27 +797,23 @@ const InvestStockDetails = () => {
                     });
 
                     // Also record a structured stock purchase entry
-                    const sharesAmount = outAmount ?? undefined;
+                    // Use outAmountRaw (clean numeric, no commas) so parseFloat works correctly in the DB
                     void apiFetch("/stock-purchases", {
                       method: "POST",
-                      headers: {
-                        "Content-Type": "application/json",
-                      },
+                      headers: { "Content-Type": "application/json" },
                       body: JSON.stringify({
                         privyUserId,
                         stockMint: token?.address,
                         stockSymbol: token?.symbol,
                         stockName: token?.name,
                         usdcAmount: usdcInput,
-                        sharesAmount,
+                        sharesAmount: outAmountRaw ?? undefined, // raw numeric string, not display
                         walletAddress: ownerAddress ?? null,
                         txSignature: signature,
                         jupiterRequestId: requestId,
                         source: "invest_buy",
                       }),
-                    }).catch(() => {
-                      // ignore logging errors in UI
-                    });
+                    }).catch(() => {});
                   }
                 } catch (err: any) {
                   // Always log execute errors so issues are visible even outside DEV builds
@@ -832,6 +863,7 @@ const InvestStockDetails = () => {
                   setSellOutUsdc(null);
                   setSellRequestId(null);
                   setSellUnsignedTx(null);
+                  setSellLastValidBlockHeight(null);
                   setSellExecuteError(null);
                   setSellExecuteSuccess(null);
 
@@ -870,7 +902,7 @@ const InvestStockDetails = () => {
                         ? token.decimals
                         : 6;
                     const rawAmount = Math.round(parsed * 10 ** sellDecimals);
-                    const base = "https://api.jup.ag/ultra/v1/order";
+                    const base = "https://api.jup.ag/swap/v2/order";
                     const params = new URLSearchParams({
                       inputMint: token.address,
                       outputMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
@@ -886,34 +918,52 @@ const InvestStockDetails = () => {
                       },
                     });
 
+                    // Always parse body to surface real error message
+                    const data: any = await res.json().catch(() => null);
+                    // eslint-disable-next-line no-console
+                    console.debug("[InvestStockDetails] Sell order response", { status: res.status, data });
+
                     if (!res.ok) {
-                      throw new Error(`Failed to quote sell order: ${res.status}`);
+                      const apiMsg =
+                        data?.error ??
+                        data?.message ??
+                        data?.detail ??
+                        `Jupiter API error ${res.status}`;
+                      throw new Error(apiMsg);
                     }
 
-                    const data: any = await res.json();
-                    if (import.meta.env.DEV) {
-                      // eslint-disable-next-line no-console
-                      console.debug("[InvestStockDetails] Sell order quote response", data);
+                    if (data?.error || data?.message) {
+                      throw new Error(data?.error ?? data?.message);
                     }
 
-                    const outAmountRaw = data?.outAmount as string | undefined;
-                    const tx = data?.transaction as string | undefined; // unsigned serialized tx (base64)
+                    const rawSellOutStr = data?.outAmount as string | undefined;
+                    const tx = data?.transaction as string | undefined;
                     const reqId = data?.requestId as string | undefined;
+                    // lastValidBlockHeight can be a number or string in the JSON
+                    const lvbh = data?.lastValidBlockHeight != null
+                      ? String(data.lastValidBlockHeight)
+                      : undefined;
 
-                    if (!outAmountRaw) {
+                    if (!rawSellOutStr || !tx || !reqId) {
                       setSellOutUsdc(null);
+                      setSellOutUsdcRaw(null);
                       setSellRequestId(null);
+                      setSellUnsignedTx(null);
+                      setSellLastValidBlockHeight(null);
+                      const missing = [!rawSellOutStr && "outAmount", !tx && "transaction", !reqId && "requestId"]
+                        .filter(Boolean).join(", ");
+                      setSellQuoteError(`Incomplete quote response (missing: ${missing}). Token may not be tradeable via this route.`);
                       return;
                     }
 
                     // outAmount is USDC in base units (6 decimals)
-                    // outAmount is USDC in base units (6 decimals) – multiply by 100 for display
-                    const outNumber = Number(outAmountRaw) / 1_000_000;
-                    setSellOutUsdc(outNumber.toLocaleString(undefined, {
-                      maximumFractionDigits: 6,
-                    }));
-                    setSellUnsignedTx(tx ?? null);
-                    setSellRequestId(reqId ?? null);
+                    const outNumber = Number(rawSellOutStr) / 1_000_000;
+                    // Store display string and raw numeric separately
+                    setSellOutUsdc(outNumber.toLocaleString(undefined, { maximumFractionDigits: 6 }));
+                    setSellOutUsdcRaw(String(outNumber)); // clean numeric, no commas
+                    setSellUnsignedTx(tx);
+                    setSellRequestId(reqId);
+                    setSellLastValidBlockHeight(lvbh ?? null);
                   } catch (err: any) {
                     // eslint-disable-next-line no-console
                     console.error("[InvestStockDetails] Sell quote error", err);
@@ -1013,7 +1063,7 @@ const InvestStockDetails = () => {
                     signResult?.signedTransaction ?? signResult;
                   const signedBase64 = uint8ArrayToBase64(signedBytes);
 
-                  const res = await fetch("https://api.jup.ag/ultra/v1/execute", {
+                  const res = await fetch("https://api.jup.ag/swap/v2/execute", {
                     method: "POST",
                     headers: {
                       "Content-Type": "application/json",
@@ -1022,6 +1072,7 @@ const InvestStockDetails = () => {
                     body: JSON.stringify({
                       signedTransaction: signedBase64,
                       requestId: sellRequestId,
+                      lastValidBlockHeight: sellLastValidBlockHeight ?? undefined,
                     }),
                   });
 
@@ -1083,44 +1134,23 @@ const InvestStockDetails = () => {
                     });
 
                     // Also record a structured stock sale entry in stock_sales table
-                    const sharesAmount = sellInput || undefined;
+                    // Use sellInput (typed number) for shares and sellOutUsdcRaw (clean numeric) for USDC
                     void apiFetch("/stock-sales", {
                       method: "POST",
-                      headers: {
-                        "Content-Type": "application/json",
-                      },
+                      headers: { "Content-Type": "application/json" },
                       body: JSON.stringify({
                         privyUserId,
                         stockMint: token?.address,
                         stockSymbol: token?.symbol,
                         stockName: token?.name,
-                        usdcAmount: sellOutUsdc,
-                        sharesAmount,
+                        usdcAmount: sellOutUsdcRaw ?? sellOutUsdc, // raw numeric string for DB
+                        sharesAmount: sellInput || undefined, // user-typed raw number
                         walletAddress: ownerAddress ?? null,
                         txSignature: signature,
                         jupiterRequestId: sellRequestId,
                         source: "invest_sell",
                       }),
-                    })
-                      .then(async (res) => {
-                        if (!import.meta.env.DEV) return;
-
-                        let body: any = null;
-                        try {
-                          body = await res.json();
-                        } catch {
-                          body = null;
-                        }
-                        // eslint-disable-next-line no-console
-                        console.debug("[InvestStockDetails] Stock sale backend response", {
-                          status: res.status,
-                          ok: res.ok,
-                          body,
-                        });
-                      })
-                      .catch(() => {
-                        // ignore logging errors in UI
-                      });
+                    }).catch(() => {});
                   }
                 } catch (err: any) {
                   // eslint-disable-next-line no-console

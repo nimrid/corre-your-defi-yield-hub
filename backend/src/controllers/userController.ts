@@ -74,7 +74,14 @@ export async function listUsers(_req: Request, res: Response) {
 export async function upsertUser(req: Request, res: Response) {
   const body = req.body as UserInput;
   const wallets: WalletInput[] = body.wallets ?? [];
-  const client = await pool.connect();
+
+  let client;
+  try {
+    client = await pool.connect();
+  } catch (err) {
+    console.error("Error acquiring DB connection for upsertUser", err);
+    return res.status(503).json({ error: "Database temporarily unavailable, please retry" });
+  }
 
   try {
     await client.query("BEGIN");
@@ -124,7 +131,7 @@ export async function upsertUser(req: Request, res: Response) {
     await client.query("COMMIT");
     return res.json({ success: true, userId });
   } catch (err) {
-    await client.query("ROLLBACK");
+    await client.query("ROLLBACK").catch(() => {});
     console.error("Error upserting user", err);
     return res.status(500).json({ error: "Internal server error" });
   } finally {

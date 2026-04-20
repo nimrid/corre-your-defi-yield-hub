@@ -8,6 +8,7 @@ import { useNavigate } from "react-router-dom";
 import { usePrivy } from "@privy-io/react-auth";
 import { useSignAndSendTransaction, useWallets as useSolanaWallets } from "@privy-io/react-auth/solana";
 import { apiFetch } from "@/services/apiClient";
+import { Buffer } from "buffer";
 
 const USDC_MINT = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
 const LULO_REFERRER = "6pZiqTT81nKLxMvQay7P6TrRx9NdWG5zbakaZdQoWoUb";
@@ -147,7 +148,35 @@ const SaveRegular = () => {
       setLoading(true);
 
       const owner = selectedWallet.address;
-      const feePayer = selectedWallet.address;
+      let feePayer = owner;
+      let useGasSponsorship = false;
+
+      try {
+        const eligibilityResponse = await apiFetch("/gas-sponsorship/check", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            privyUserId: user?.id,
+            amountUSD: Number(amount),
+          }),
+        });
+
+        if (eligibilityResponse.ok) {
+          const eligibility = await eligibilityResponse.json();
+          if (!eligibility.allowed) {
+            setError(eligibility.reason || "Transaction not allowed at this time.");
+            setLoading(false);
+            return;
+          }
+          if (eligibility.sponsorshipAllowed !== false && eligibility.feePayerAddress) {
+            useGasSponsorship = true;
+            feePayer = eligibility.feePayerAddress;
+          }
+        }
+      } catch (err) {
+        console.warn("Gas sponsorship check failed, falling back to basic flow");
+      }
+
       const regularAmount = Number(amount); // pass raw USDC amount, no 6-decimal conversion
 
       const res = await fetch("https://api.lulo.fi/v1/generate.transactions.deposit", {
@@ -184,12 +213,38 @@ const SaveRegular = () => {
 
       const rawTx = Uint8Array.from(atob(encodedTx), (c) => c.charCodeAt(0));
 
-      const result = await signAndSendTransaction({
-        transaction: rawTx,
-        wallet: selectedWallet,
-      });
+      let signature = "";
+      if (useGasSponsorship) {
+        const { VersionedTransaction } = await import("@solana/web3.js");
+        const transaction = VersionedTransaction.deserialize(rawTx);
 
-      const signature = result?.signature?.toString() ?? "";
+        const signedTxResponse = await (selectedWallet as any).signTransaction({
+           transaction: transaction.serialize()
+        });
+
+        const serializedTransaction = Buffer.from(signedTxResponse.signedTransaction).toString('base64');
+
+        const sponsorRes = await apiFetch('/gas-sponsorship/sponsor-transaction', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ transaction: serializedTransaction })
+        });
+
+        if (!sponsorRes.ok) {
+          let errText = await sponsorRes.text();
+          try { errText = JSON.parse(errText).error || errText; } catch(e) {}
+          throw new Error(`Sponsorship failed: ${errText}`);
+        }
+
+        const sponsorData = await sponsorRes.json();
+        signature = sponsorData.transactionHash;
+      } else {
+        const result = await signAndSendTransaction({
+          transaction: rawTx,
+          wallet: selectedWallet,
+        });
+        signature = result?.signature?.toString() ?? "";
+      }
       setSuccess(signature ? `Deposit transaction submitted: ${signature}` : "Deposit transaction submitted.");
 
       const privyUserId = user?.id;
@@ -268,7 +323,36 @@ const SaveRegular = () => {
       setLoading(true);
 
       const owner = selectedWallet.address;
-      const feePayer = selectedWallet.address;
+      let feePayer = owner;
+      let useGasSponsorship = false;
+
+      const actualAmount = pendingWithdrawal.nativeAmount ? Number(pendingWithdrawal.nativeAmount) / Math.pow(10, 6) : 0;
+
+      try {
+        const eligibilityResponse = await apiFetch("/gas-sponsorship/check", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            privyUserId: user?.id,
+            amountUSD: actualAmount,
+          }),
+        });
+
+        if (eligibilityResponse.ok) {
+          const eligibility = await eligibilityResponse.json();
+          if (!eligibility.allowed) {
+            setError(eligibility.reason || "Transaction not allowed at this time.");
+            setLoading(false);
+            return;
+          }
+          if (eligibility.sponsorshipAllowed !== false && eligibility.feePayerAddress) {
+            useGasSponsorship = true;
+            feePayer = eligibility.feePayerAddress;
+          }
+        }
+      } catch (err) {
+        console.warn("Gas sponsorship check failed, falling back to basic flow");
+      }
 
       const completeRes = await fetch(
         "https://api.lulo.fi/v1/generate.transactions.completeRegularWithdrawal",
@@ -303,12 +387,38 @@ const SaveRegular = () => {
 
       const completeRawTx = Uint8Array.from(atob(completeEncodedTx), (c) => c.charCodeAt(0));
 
-      const result = await signAndSendTransaction({
-        transaction: completeRawTx,
-        wallet: selectedWallet,
-      });
+      let signature = "";
+      if (useGasSponsorship) {
+        const { VersionedTransaction } = await import("@solana/web3.js");
+        const transaction = VersionedTransaction.deserialize(completeRawTx);
 
-      const signature = result?.signature?.toString() ?? "";
+        const signedTxResponse = await (selectedWallet as any).signTransaction({
+           transaction: transaction.serialize()
+        });
+
+        const serializedTransaction = Buffer.from(signedTxResponse.signedTransaction).toString('base64');
+
+        const sponsorRes = await apiFetch('/gas-sponsorship/sponsor-transaction', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ transaction: serializedTransaction })
+        });
+
+        if (!sponsorRes.ok) {
+          let errText = await sponsorRes.text();
+          try { errText = JSON.parse(errText).error || errText; } catch(e) {}
+          throw new Error(`Sponsorship failed: ${errText}`);
+        }
+
+        const sponsorData = await sponsorRes.json();
+        signature = sponsorData.transactionHash;
+      } else {
+        const result = await signAndSendTransaction({
+          transaction: completeRawTx,
+          wallet: selectedWallet,
+        });
+        signature = result?.signature?.toString() ?? "";
+      }
       setSuccess(
         signature
           ? `Withdraw transaction submitted: ${signature}`
@@ -323,7 +433,7 @@ const SaveRegular = () => {
         body: JSON.stringify({ privyUserId, withdrawalId: pendingWithdrawal.withdrawalId }),
       }).catch(() => { });
 
-      const actualAmount = pendingWithdrawal.nativeAmount ? (Number(pendingWithdrawal.nativeAmount) / Math.pow(10, 6)).toString() : "0";
+      const actualAmountStr = pendingWithdrawal.nativeAmount ? (Number(pendingWithdrawal.nativeAmount) / Math.pow(10, 6)).toString() : "0";
 
       await apiFetch("/transactions", {
         method: "POST",
@@ -334,7 +444,7 @@ const SaveRegular = () => {
           privyUserId,
           chainType: "solana",
           assetSymbol: "USDC",
-          amount: actualAmount,
+          amount: actualAmountStr,
           direction: "incoming",
           txSignature: signature,
           fromAddress: "lulo_vault_regular",
@@ -352,7 +462,7 @@ const SaveRegular = () => {
           privyUserId,
           vaultType: "regular",
           direction: "withdrawal",
-          usdcAmount: actualAmount,
+          usdcAmount: actualAmountStr,
           walletAddress: owner,
           txSignature: signature,
           source: "save_regular_withdraw",
@@ -386,8 +496,35 @@ const SaveRegular = () => {
       setLoading(true);
 
       const owner = selectedWallet.address;
-      const feePayer = selectedWallet.address;
+      let feePayer = owner;
+      let useGasSponsorship = false;
       const withdrawAmount = Number(amount); // raw USDC amount, no 6-decimal conversion
+
+      try {
+        const eligibilityResponse = await apiFetch("/gas-sponsorship/check", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            privyUserId: user?.id,
+            amountUSD: withdrawAmount,
+          }),
+        });
+
+        if (eligibilityResponse.ok) {
+          const eligibility = await eligibilityResponse.json();
+          if (!eligibility.allowed) {
+            setError(eligibility.reason || "Transaction not allowed at this time.");
+            setLoading(false);
+            return;
+          }
+          if (eligibility.sponsorshipAllowed !== false && eligibility.feePayerAddress) {
+            useGasSponsorship = true;
+            feePayer = eligibility.feePayerAddress;
+          }
+        }
+      } catch (err) {
+        console.warn("Gas sponsorship check failed, falling back to basic flow");
+      }
 
       // Phase 1: initiate regular withdraw
       const initRes = await fetch(
@@ -424,10 +561,33 @@ const SaveRegular = () => {
 
       const initRawTx = Uint8Array.from(atob(initEncodedTx), (c) => c.charCodeAt(0));
 
-      await signAndSendTransaction({
-        transaction: initRawTx,
-        wallet: selectedWallet,
-      });
+      if (useGasSponsorship) {
+        const { VersionedTransaction } = await import("@solana/web3.js");
+        const transaction = VersionedTransaction.deserialize(initRawTx);
+
+        const signedTxResponse = await (selectedWallet as any).signTransaction({
+           transaction: transaction.serialize()
+        });
+
+        const serializedTransaction = Buffer.from(signedTxResponse.signedTransaction).toString('base64');
+
+        const sponsorRes = await apiFetch('/gas-sponsorship/sponsor-transaction', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ transaction: serializedTransaction })
+        });
+
+        if (!sponsorRes.ok) {
+          let errText = await sponsorRes.text();
+          try { errText = JSON.parse(errText).error || errText; } catch(e) {}
+          throw new Error(`Sponsorship failed: ${errText}`);
+        }
+      } else {
+        await signAndSendTransaction({
+          transaction: initRawTx,
+          wallet: selectedWallet,
+        });
+      }
 
       // Look up the pending withdrawal id via listPendingWithdrawals on Lulo,
       // then persist it in our backend so cooldown state is shared across devices.

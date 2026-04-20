@@ -51,9 +51,9 @@ export async function checkGasSponsorshipEligibility(
     // Get user's recent transaction count and spending
     const result = await pool.query(
       `SELECT 
-        COUNT(*) FILTER (WHERE created_at >= $1) as hourly_count,
-        COUNT(*) FILTER (WHERE created_at >= $2) as daily_count,
-        COALESCE(SUM(amount::numeric) FILTER (WHERE created_at >= $2), 0) as daily_spend
+        COUNT(*) FILTER (WHERE t.created_at >= $1) as hourly_count,
+        COUNT(*) FILTER (WHERE t.created_at >= $2) as daily_count,
+        COALESCE(SUM(amount::numeric) FILTER (WHERE t.created_at >= $2), 0) as daily_spend
        FROM transactions t
        JOIN users u ON u.id = t.user_id
        WHERE u.privy_user_id = $3
