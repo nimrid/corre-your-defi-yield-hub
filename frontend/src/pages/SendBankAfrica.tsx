@@ -317,19 +317,23 @@ const SendBankAfrica = () => {
         } else {
           console.log("[Offramp] Sending USDC transaction from wallet:", selectedWallet.address);
           
-          const { Connection, PublicKey, Transaction } = await import("@solana/web3.js");
+          const { Connection, PublicKey, Transaction, VersionedTransaction, TransactionMessage } = await import("@solana/web3.js");
           const { getAssociatedTokenAddress, createTransferInstruction, createAssociatedTokenAccountInstruction } = await import("@solana/spl-token");
 
-          const SOLANA_RPC = import.meta.env.VITE_SOLANA_RPC ?? "https://solana-mainnet.g.alchemy.com/v2/C5-LCLXSwlCEtsquSDPIj";
-          const connection = new Connection(SOLANA_RPC, "confirmed");
+          const rawSolanaRpc = import.meta.env.VITE_SOLANA_RPC ?? "https://solana-mainnet.g.alchemy.com/v2/C5-LCLXSwlCEtsquSDPIj";
+          const rawWsRpc = import.meta.env.VITE_SOLANA_WS_RPC ?? "wss://mainnet.helius-rpc.com/?api-key=41c75a65-eb0d-4509-9851-7ba59261081a";
+          const SOLANA_RPC = rawSolanaRpc.replace(/^['"]|['"]$/g, "").trim();
+          const SOLANA_WS_RPC = rawWsRpc.replace(/^['"]|['"]$/g, "").trim();
+
+          const connection = new Connection(SOLANA_RPC, {
+            commitment: "confirmed",
+            wsEndpoint: SOLANA_WS_RPC,
+          });
 
           const fromPubkey = new PublicKey(selectedWallet.address);
           const toPubkey = new PublicKey(order.address);
 
-          const { blockhash } = await connection.getLatestBlockhash("finalized");
-          const transaction = new Transaction();
-          transaction.feePayer = fromPubkey;
-          transaction.recentBlockhash = blockhash;
+          const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash("confirmed");
 
           const amountNumber = Number(order.amount);
           const usdcMint = new PublicKey(USDC_MINT);
@@ -340,41 +344,126 @@ const SendBankAfrica = () => {
           // 6 decimals for USDC on Solana
           const rawAmount = Math.floor(amountNumber * 1_000_000);
 
+          const instructions: any[] = [];
+
           const toAccountInfo = await connection.getAccountInfo(toTokenAccount);
           if (!toAccountInfo) {
-            transaction.add(
+            instructions.push(
               createAssociatedTokenAccountInstruction(fromPubkey, toTokenAccount, toPubkey, usdcMint)
             );
           }
 
-          transaction.add(
+          instructions.push(
             createTransferInstruction(fromTokenAccount, toTokenAccount, fromPubkey, rawAmount)
           );
 
-          // Strip CloseAccount ix for safety
-          transaction.instructions = transaction.instructions.filter((ix) => ix.data[0] !== 0x0a);
-
-          const signedTxResponse = await selectedWallet.signTransaction({
-            transaction: transaction.serialize({ requireAllSignatures: false }),
+          // Security: Strip CloseAccount instructions (discriminator 0x0a)
+          const filteredInstructions = instructions.filter((ix) => {
+            if (ix.data && ix.data.length > 0) {
+              return ix.data[0] !== 0x0a;
+            }
+            return true;
           });
 
-          const signature = await connection.sendRawTransaction(signedTxResponse.signedTransaction);
+          // ── Gas sponsorship check ──
+          let useGasSponsorship = false;
+          let feePayerAddress = "";
 
-          // Wait for confirmation with a more robust approach
           try {
-            const latestBlockhash = await connection.getLatestBlockhash("confirmed");
+            const eligibilityResponse = await apiFetch("/gas-sponsorship/check", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                privyUserId: user?.id,
+                amountUSD: Number(amountUSDC),
+              }),
+            });
+
+            if (eligibilityResponse.ok) {
+              const eligibility = await eligibilityResponse.json();
+
+              if (eligibility.sponsorshipAllowed !== false && eligibility.feePayerAddress) {
+                useGasSponsorship = true;
+                feePayerAddress = eligibility.feePayerAddress;
+                console.log("[Offramp] Gas sponsorship approved, fee payer:", feePayerAddress);
+              } else {
+                console.log("[Offramp] Gas sponsorship not available:", eligibility.reason || "amount above limit");
+              }
+            } else {
+              console.warn("[Offramp] Gas sponsorship check returned non-OK, falling back to user-pays");
+            }
+          } catch (eligibilityError) {
+            console.warn("[Offramp] Gas sponsorship check failed, falling back to user-pays:", eligibilityError);
+          }
+
+          let signature = "";
+
+          if (useGasSponsorship) {
+            // Build a VersionedTransaction with the fee payer as the payer
+            const message = new TransactionMessage({
+              payerKey: new PublicKey(feePayerAddress),
+              recentBlockhash: blockhash,
+              instructions: filteredInstructions,
+            }).compileToV0Message();
+
+            const versionedTransaction = new VersionedTransaction(message);
+
+            // User signs (does NOT broadcast)
+            const signedTxResponse = await (selectedWallet as any).signTransaction({
+              transaction: versionedTransaction.serialize(),
+            });
+
+            const serializedTransaction = Buffer.from(signedTxResponse.signedTransaction).toString("base64");
+
+            // Send to backend for fee payer co-signing + broadcast
+            const sponsorRes = await apiFetch("/gas-sponsorship/sponsor-transaction", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ transaction: serializedTransaction }),
+            });
+
+            if (!sponsorRes.ok) {
+              let errText = await sponsorRes.text();
+              try {
+                const errObj = JSON.parse(errText);
+                errText = errObj.error || errText;
+              } catch (_e) {}
+              throw new Error(`Sponsorship failed: ${errText}`);
+            }
+
+            const sponsorData = await sponsorRes.json();
+            signature = sponsorData.transactionHash;
+            console.log("[Offramp] Sponsored transaction sent:", signature);
+          } else {
+            // Fallback: user pays gas fees
+            const transaction = new Transaction();
+            transaction.feePayer = fromPubkey;
+            transaction.recentBlockhash = blockhash;
+
+            for (const ix of filteredInstructions) {
+              transaction.add(ix);
+            }
+
+            const signedTxResponse = await selectedWallet.signTransaction({
+              transaction: transaction.serialize({ requireAllSignatures: false }),
+            });
+
+            signature = await connection.sendRawTransaction(signedTxResponse.signedTransaction);
+          }
+
+          // Wait for confirmation with a robust approach
+          try {
             await connection.confirmTransaction(
               {
                 signature,
-                blockhash: latestBlockhash.blockhash,
-                lastValidBlockHeight: latestBlockhash.lastValidBlockHeight,
+                blockhash,
+                lastValidBlockHeight,
               },
               "confirmed"
             );
           } catch (confirmError: any) {
             console.warn("[Offramp] Confirmation wait timed out or failed, checking status manually:", confirmError);
 
-            // Manual status check if confirmTransaction fails/times out
             const status = await connection.getSignatureStatus(signature);
             const hasSucceeded =
               status.value?.confirmationStatus === "confirmed" ||
@@ -474,10 +563,10 @@ const SendBankAfrica = () => {
                 <input
                   id="amount"
                   type="number"
-                  min="1"
-                  step="1"
+                  min="0.01"
+                  step="0.01"
                   required
-                  placeholder="e.g. 10"
+                  placeholder="e.g. 10.50"
                   className="w-full bg-secondary/50 border border-border/80 rounded-xl py-3 pl-8 pr-4 text-foreground focus:outline-none focus:ring-2 focus:ring-primary shadow-sm"
                   value={amountUSDC}
                   onChange={(e) => setAmountUSDC(e.target.value)}

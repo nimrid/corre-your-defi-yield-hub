@@ -272,13 +272,39 @@ const Home = () => {
         setTxLoading(true);
         setTxError(null);
 
+        // Fetch app-recorded transactions from our DB
         const res = await apiFetch(`/transactions/${user.id}`);
         if (!res.ok) {
           throw new Error("Failed to fetch transactions");
         }
-
         const data = await res.json();
-        setTransactions(Array.isArray(data) ? data : []);
+        const dbTransactions: TransactionRow[] = Array.isArray(data) ? data : [];
+
+        // Fetch on-chain USDC transfer history via Helius
+        let onchainTransactions: TransactionRow[] = [];
+        if (primarySolanaAddress) {
+          try {
+            const onchainRes = await apiFetch(`/transactions/onchain/${primarySolanaAddress}`);
+            if (onchainRes.ok) {
+              const onchainData = await onchainRes.json();
+              onchainTransactions = Array.isArray(onchainData) ? onchainData : [];
+            }
+          } catch (err) {
+            console.warn("Failed to fetch on-chain transactions:", err);
+          }
+        }
+
+        // De-duplicate: if a tx signature exists in DB records, skip the on-chain duplicate
+        const dbSignatures = new Set(
+          dbTransactions
+            .map((tx) => tx.txSignature)
+            .filter(Boolean)
+        );
+        const uniqueOnchain = onchainTransactions.filter(
+          (tx) => !tx.txSignature || !dbSignatures.has(tx.txSignature)
+        );
+
+        setTransactions([...dbTransactions, ...uniqueOnchain]);
       } catch (err: any) {
         setTxError(err?.message ?? "Failed to load transactions");
       } finally {
@@ -333,7 +359,7 @@ const Home = () => {
       void fetchSavingsActivity();
       void fetchStockHistory();
     }
-  }, [ready, authenticated, user]);
+  }, [ready, authenticated, user, primarySolanaAddress]);
 
   useEffect(() => {
     const fetchFiatTransactions = async () => {
@@ -611,7 +637,7 @@ const Home = () => {
                             </div>
                             <div className="mt-2 sm:mt-0 sm:text-right text-xs text-muted-foreground space-y-1">
                               <div className="font-semibold text-foreground/90">{itemDate}</div>
-                              <div className="uppercase tracking-widest text-[10px] font-bold opacity-60">{tx.chainType} Transfer</div>
+                              <div className="uppercase tracking-widest text-[10px] font-bold opacity-60">{tx.source === "offramp" ? "Bank Transfer" : tx.source === "onchain" ? "On-chain Transfer" : `${tx.chainType} Transfer`}</div>
                             </div>
                           </div>
                         );

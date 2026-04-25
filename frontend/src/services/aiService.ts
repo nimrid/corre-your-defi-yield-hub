@@ -1,4 +1,5 @@
 import { US_STOCK_TOKENS } from "@/config/usStockTokens";
+import { apiFetch } from "@/services/apiClient";
 
 export interface Message {
     role: "user" | "assistant" | "system";
@@ -10,16 +11,10 @@ const SYSTEM_PROMPT = `You are Corre AI, a helpful and professional stock market
 ).join("\n")}`;
 
 export const fetchStockAdvice = async (chatMessages: Message[]): Promise<string> => {
-    const apiKey = import.meta.env.VITE_GROQ_API_KEY;
-    if (!apiKey) {
-        throw new Error("Corre AI is not configured. Please contact support.");
-    }
-
-    const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+    const response = await apiFetch("/ai/chat", {
         method: "POST",
         headers: {
             "Content-Type": "application/json",
-            Authorization: `Bearer ${apiKey}`,
         },
         body: JSON.stringify({
             model: "llama-3.1-8b-instant",

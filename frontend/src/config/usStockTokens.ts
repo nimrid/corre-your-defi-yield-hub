@@ -55,6 +55,7 @@ export const US_STOCK_TOKENS: USStockTokenConfig[] = [
   { mint: "ivdDracs2s7jCP698dJXKSEQdVrNj9hasJL1Uq1ondo", name: "Shopify", symbol: "SHOPon" },
   { mint: "KUXt7LzHWSQXp5eyqMZRxWjAP6yM8BUh4LRHwiwondo", name: "Johnson & Johnson", symbol: "JNJon" },
   { mint: "XsApJFV9MAktqnAc6jqzsHVujxkGm9xcSUffaBoYLKC", name: "Mastercard", symbol: "MA" },
+  { mint: "Pren1FvFX6J3E4kXhJuCiAD5aDmGEb7qJRncwA8Lkhw", name: "ANTHROPIC", symbol: "ANTHROPIC" },
 
 ];
 

@@ -11,6 +11,7 @@ import stockRoutes from "./routes/stockRoutes.js";
 import withdrawalRoutes from "./routes/withdrawalRoutes.js";
 import gasSponsorshipRoutes from "./routes/gasSponsorshipRoutes.js";
 import pajSessionRoutes from "./routes/pajSessionRoutes.js";
+import aiRoutes from "./routes/aiRoutes.js";
 import africaRoutes from "./routes/africaRoutes.js";
 import heliusWebhookRoutes from "./routes/heliusWebhook.js";
 import privyWebhookRoutes from "./routes/privyWebhook.js";
@@ -98,6 +99,7 @@ app.use("/stocks", stockRoutes);
 app.use("/withdrawals", withdrawalRoutes);
 app.use("/gas-sponsorship", gasSponsorshipRoutes);
 app.use("/paj-session", pajSessionRoutes);
+app.use("/ai", aiRoutes);
 
 // ── Third-party integration routes ───────────────────────────────────────────
 app.use("/fonbnk/africa", africaRoutes);

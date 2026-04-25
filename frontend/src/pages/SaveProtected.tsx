@@ -82,6 +82,11 @@ const SaveProtected = () => {
       return;
     }
 
+    if (Number(amount) < 1) {
+      setError("Minimum deposit is $1. Please enter an amount of at least $1.");
+      return;
+    }
+
     const selectedWallet = wallets[0];
     if (!selectedWallet?.address) {
       setError("No Solana wallet found. Please make sure your wallet is connected.");
@@ -466,13 +471,14 @@ const SaveProtected = () => {
               <Input
                 id="amount"
                 type="number"
-                min="0"
+                min="1"
                 step="0.01"
-                placeholder="0.00"
+                placeholder="1.00"
                 className="bg-secondary/50 border-border/50"
                 value={amount}
                 onChange={(e) => setAmount(e.target.value)}
               />
+              <p className="text-xs text-muted-foreground">Minimum deposit: $1.00</p>
             </div>
 
             {error && <p className="text-sm text-red-500">{error}</p>}
