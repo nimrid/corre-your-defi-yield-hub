@@ -93,6 +93,7 @@ const InvestStockDetails = () => {
   const [userShares, setUserShares] = useState<string | null>(null);
   const [sharesLoading, setSharesLoading] = useState(false);
   const [usdcBalance, setUsdcBalance] = useState<string | null>(null);
+  const [usdcBalanceRaw, setUsdcBalanceRaw] = useState<number | null>(null);
 
   const [buyOpen, setBuyOpen] = useState(false);
   const [usdcInput, setUsdcInput] = useState<string>("");
@@ -271,9 +272,11 @@ const InvestStockDetails = () => {
           }, 0);
           
           setUsdcBalance(Number(ui).toLocaleString(undefined, { maximumFractionDigits: 4 }));
+          setUsdcBalanceRaw(ui);
         } catch (err) {
           console.error("Failed to fetch USDC balance via RPC", err);
           setUsdcBalance(null);
+          setUsdcBalanceRaw(null);
         }
       } catch {
         setUserShares(null);
@@ -389,8 +392,8 @@ const InvestStockDetails = () => {
                 <span className="mt-1 font-semibold">
                   {sharesLoading
                     ? "Checking..."
-                    : userShares != null
-                    ? `${userShares} shares`
+                    : userShares != null && Number(userShares) > 0
+                    ? `${Number(userShares).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 6 })} shares`
                     : "No shares detected"}
                 </span>
               </div>
@@ -523,6 +526,16 @@ const InvestStockDetails = () => {
                     return;
                   }
 
+                  if (parsed < 5) {
+                    setQuoteError("Minimum investment is $5. Please enter an amount of at least $5.");
+                    return;
+                  }
+
+                  if (usdcBalanceRaw !== null && parsed > usdcBalanceRaw) {
+                    setQuoteError(`Insufficient USDC balance. You have ${usdcBalanceRaw.toLocaleString(undefined, { maximumFractionDigits: 2 })} USDC available.`);
+                    return;
+                  }
+
                   const apiKey = import.meta.env.VITE_JUP_API_KEY as string | undefined;
                   if (!apiKey) return;
 
@@ -629,7 +642,7 @@ const InvestStockDetails = () => {
                 }}
               />
               <p className="text-xs text-muted-foreground">
-                Enter the amount of USDC you want to invest in {token?.symbol}.
+                Enter the amount of USDC you want to invest in {token?.symbol}. Minimum: $5.00
               </p>
             </div>
 
@@ -815,11 +828,24 @@ const InvestStockDetails = () => {
                       }),
                     }).catch(() => {});
                   }
+
+                  // Instantly update displayed holdings
+                  if (outAmountRaw) {
+                    const added = parseFloat(outAmountRaw);
+                    if (!Number.isNaN(added)) {
+                      setUserShares((prev) => {
+                        const current = prev ? parseFloat(prev) : 0;
+                        return String(Math.max(current + added, 0));
+                      });
+                    }
+                  }
                 } catch (err: any) {
                   // Always log execute errors so issues are visible even outside DEV builds
                   // eslint-disable-next-line no-console
                   console.error("[InvestStockDetails] Execute error", err);
-                  setExecuteError(err?.message ?? "Failed to execute order");
+                  const msg = err?.message ?? "";
+                  const isCancelled = /reject|cancel|denied|refused|connect to wallet/i.test(msg);
+                  setExecuteError(isCancelled ? "Cancelled transaction." : (msg || "Failed to execute order"));
                 } finally {
                   setExecuteLoading(false);
                 }
@@ -1152,10 +1178,23 @@ const InvestStockDetails = () => {
                       }),
                     }).catch(() => {});
                   }
+
+                  // Instantly update displayed holdings
+                  if (sellInput) {
+                    const sold = parseFloat(sellInput);
+                    if (!Number.isNaN(sold)) {
+                      setUserShares((prev) => {
+                        const current = prev ? parseFloat(prev) : 0;
+                        return String(Math.max(current - sold, 0));
+                      });
+                    }
+                  }
                 } catch (err: any) {
                   // eslint-disable-next-line no-console
                   console.error("[InvestStockDetails] Sell execute error", err);
-                  setSellExecuteError(err?.message ?? "Failed to execute sell order");
+                  const msg = err?.message ?? "";
+                  const isCancelled = /reject|cancel|denied|refused|connect to wallet/i.test(msg);
+                  setSellExecuteError(isCancelled ? "Cancelled transaction." : (msg || "Failed to execute sell order"));
                 } finally {
                   setSellExecuteLoading(false);
                 }

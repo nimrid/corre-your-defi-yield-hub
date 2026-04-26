@@ -500,7 +500,14 @@ const SendBankAfrica = () => {
         }
       } catch (txErr: any) {
         console.error("[Offramp] Wallet transaction failed:", txErr);
-        // We catch here so it still shows order success and lets the user manually send
+        const txMsg = txErr?.message ?? "";
+        const isCancelled = /reject|cancel|denied|refused|connect to wallet/i.test(txMsg);
+        if (isCancelled) {
+          setOrderError("Cancelled transaction.");
+          setCreatingOrder(false);
+          return;
+        }
+        // For non-cancellation errors, we still show order success and let the user manually send
       }
 
       setOrderSuccess(true);

@@ -31,10 +31,10 @@ async function updateHoldingsSummary(
 ): Promise<void> {
   await client.query(
     `INSERT INTO stock_holdings_summary (user_id, stock_mint, shares)
-     VALUES ($1, $2, $3)
+     VALUES ($1, $2, GREATEST($3, 0))
      ON CONFLICT (user_id, stock_mint)
      DO UPDATE SET
-       shares     = stock_holdings_summary.shares + EXCLUDED.shares,
+       shares     = GREATEST(stock_holdings_summary.shares + EXCLUDED.shares, 0),
        updated_at = NOW()`,
     [userId, stockMint, sharesDelta]
   );
@@ -140,9 +140,10 @@ export async function getStockHoldings(req: Request, res: Response) {
     if (userId === null) return res.status(404).json({ error: "User not found" });
 
     let result = await pool.query(
-      `SELECT stock_mint AS "stockMint", shares
+      `SELECT stock_mint AS "stockMint",
+              GREATEST(shares, 0) AS shares
          FROM stock_holdings_summary
-        WHERE user_id = $1 AND shares <> 0`,
+        WHERE user_id = $1 AND shares > 0`,
       [userId]
     );
 
@@ -150,9 +151,10 @@ export async function getStockHoldings(req: Request, res: Response) {
     if (result.rows.length === 0) {
       await backfillHoldings(userId);
       result = await pool.query(
-        `SELECT stock_mint AS "stockMint", shares
+        `SELECT stock_mint AS "stockMint",
+                GREATEST(shares, 0) AS shares
            FROM stock_holdings_summary
-          WHERE user_id = $1 AND shares <> 0`,
+          WHERE user_id = $1 AND shares > 0`,
         [userId]
       );
     }

@@ -40,6 +40,7 @@ const SaveRegular = () => {
   const [pendingLoading, setPendingLoading] = useState(false);
   const [pendingError, setPendingError] = useState<string | null>(null);
   const [pendingWithdrawal, setPendingWithdrawal] = useState<PendingWithdrawal | null>(null);
+  const [usdcWalletBalance, setUsdcWalletBalance] = useState<number | null>(null);
 
   useEffect(() => {
     const fetchPosition = async () => {
@@ -85,6 +86,25 @@ const SaveRegular = () => {
         setPositionError(err?.message ?? "Failed to load position");
       } finally {
         setPositionLoading(false);
+      }
+
+      // Fetch wallet USDC balance via RPC
+      try {
+        const { Connection, PublicKey } = await import("@solana/web3.js");
+        const connection = new Connection(
+          (import.meta.env.VITE_SOLANA_RPC ?? "https://solana-mainnet.g.alchemy.com/v2/C5-LCLXSwlCEtsquSDPIj").replace(/^['"]|['"]$/g, "").trim(),
+          "confirmed",
+        );
+        const ownerPk = new PublicKey(selectedWallet.address);
+        const usdcMintPk = new PublicKey(USDC_MINT);
+        const resp = await connection.getParsedTokenAccountsByOwner(ownerPk, { mint: usdcMintPk });
+        const uiBalance = resp.value.reduce((sum, acc: any) => {
+          const amt = acc?.account?.data?.parsed?.info?.tokenAmount?.uiAmount ?? 0;
+          return sum + Number(amt || 0);
+        }, 0);
+        setUsdcWalletBalance(uiBalance);
+      } catch {
+        // Non-blocking; balance check will be skipped if fetch fails.
       }
     };
 
@@ -140,6 +160,11 @@ const SaveRegular = () => {
     const selectedWallet = wallets[0];
     if (!selectedWallet?.address) {
       setError("No Solana wallet found. Please make sure your wallet is connected.");
+      return;
+    }
+
+    if (usdcWalletBalance !== null && Number(amount) > usdcWalletBalance) {
+      setError(`Insufficient USDC balance. You have ${usdcWalletBalance.toLocaleString(undefined, { maximumFractionDigits: 2 })} USDC available.`);
       return;
     }
 
@@ -289,7 +314,9 @@ const SaveRegular = () => {
         }).catch(() => { });
       }
     } catch (err: any) {
-      setError(err?.message ?? "Failed to deposit into vault.");
+      const msg = err?.message ?? "";
+      const isCancelled = /reject|cancel|denied|refused|connect to wallet/i.test(msg);
+      setError(isCancelled ? "Cancelled transaction." : (msg || "Failed to deposit into vault."));
     } finally {
       setLoading(false);
     }
@@ -476,7 +503,9 @@ const SaveRegular = () => {
 
       setPendingWithdrawal(null);
     } catch (err: any) {
-      setError(err?.message ?? "Failed to complete withdrawal.");
+      const msg = err?.message ?? "";
+      const isCancelled = /reject|cancel|denied|refused|connect to wallet/i.test(msg);
+      setError(isCancelled ? "Cancelled transaction." : (msg || "Failed to complete withdrawal."));
     } finally {
       setLoading(false);
     }
@@ -488,6 +517,11 @@ const SaveRegular = () => {
 
     if (!amount || Number(amount) <= 0) {
       setError("Please enter a valid amount.");
+      return;
+    }
+
+    if (Number(amount) < 1) {
+      setError("Minimum withdrawal is $1. Please enter an amount of at least $1.");
       return;
     }
 
@@ -660,7 +694,9 @@ const SaveRegular = () => {
         canComplete: false,
       });
     } catch (err: any) {
-      setError(err?.message ?? "Failed to withdraw from vault.");
+      const msg = err?.message ?? "";
+      const isCancelled = /reject|cancel|denied|refused|connect to wallet/i.test(msg);
+      setError(isCancelled ? "Cancelled transaction." : (msg || "Failed to withdraw from vault."));
     } finally {
       setLoading(false);
     }
@@ -773,7 +809,12 @@ const SaveRegular = () => {
                 value={amount}
                 onChange={(e) => setAmount(e.target.value)}
               />
-              <p className="text-xs text-muted-foreground">Minimum deposit: $1.00</p>
+              <p className="text-xs text-muted-foreground">
+                Minimum deposit: $1.00
+                {usdcWalletBalance !== null && (
+                  <> · Wallet balance: {usdcWalletBalance.toLocaleString(undefined, { maximumFractionDigits: 2 })} USDC</>
+                )}
+              </p>
             </div>
 
             {error && <p className="text-sm text-red-500">{error}</p>}
