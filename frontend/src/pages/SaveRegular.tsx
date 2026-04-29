@@ -525,6 +525,16 @@ const SaveRegular = () => {
       return;
     }
 
+    if (regularDeposited === null || regularDeposited === 0) {
+      setError("You have no standard balance to withdraw.");
+      return;
+    }
+
+    if (Number(amount) > regularDeposited) {
+      setError(`Insufficient standard balance. You have ${regularDeposited.toLocaleString(undefined, { maximumFractionDigits: 2 })} USDC available.`);
+      return;
+    }
+
     const selectedWallet = wallets[0];
     if (!selectedWallet?.address) {
       setError("No Solana wallet found. Please make sure your wallet is connected.");

@@ -289,6 +289,16 @@ const SaveProtected = () => {
       return;
     }
 
+    if (protectedBalance === null || protectedBalance === 0) {
+      setError("You have no shielded balance to withdraw.");
+      return;
+    }
+
+    if (Number(amount) > protectedBalance) {
+      setError(`Insufficient shielded balance. You have ${protectedBalance.toLocaleString(undefined, { maximumFractionDigits: 2 })} USDC available.`);
+      return;
+    }
+
     const selectedWallet = wallets[0];
     if (!selectedWallet?.address) {
       setError("No Solana wallet found. Please make sure your wallet is connected.");

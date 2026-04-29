@@ -898,6 +898,16 @@ const InvestStockDetails = () => {
                     return;
                   }
 
+                  if (userShares == null || Number(userShares) <= 0) {
+                    setSellQuoteError("You do not hold any shares of this stock to sell.");
+                    return;
+                  }
+
+                  if (parsed > Number(userShares)) {
+                    setSellQuoteError(`Insufficient shares. You only have ${Number(userShares).toLocaleString(undefined, { maximumFractionDigits: 6 })} ${token.symbol}.`);
+                    return;
+                  }
+
                   const apiKey = import.meta.env.VITE_JUP_API_KEY as string | undefined;
                   if (!apiKey) return;
 

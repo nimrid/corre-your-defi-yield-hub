@@ -19,6 +19,9 @@ import InvestStockDetails from "./pages/InvestStockDetails";
 import SendBankAfrica from "./pages/SendBankAfrica";
 import BuyUSDC from "./pages/BuyUSDC";
 import BuyUSDCNaira from "./pages/BuyUSDCNaira";
+import Terms from "./pages/Terms";
+import Privacy from "./pages/Privacy";
+import About from "./pages/About";
 import { usePrivy } from "@privy-io/react-auth";
 import { ShieldCheck, WifiOff, RefreshCw } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -126,6 +129,9 @@ const App = () => {
             <Route path="/send/bank/africa" element={<SendBankAfrica />} />
             <Route path="/buy-usdc" element={<BuyUSDC />} />
             <Route path="/buy-usdc/naira" element={<BuyUSDCNaira />} />
+            <Route path="/terms" element={<Terms />} />
+            <Route path="/privacy" element={<Privacy />} />
+            <Route path="/about" element={<About />} />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
           </Routes>
