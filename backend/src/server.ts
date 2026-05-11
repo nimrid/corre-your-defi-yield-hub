@@ -45,7 +45,7 @@ const ALLOWED_ORIGINS = [
   "https://defi-corre.onrender.com",
   "https://corre.bond",
   "https://www.corre.bond",
-  "https://admin.corre.netlify.app",
+  "https://admincorre.netlify.app",
 ];
 
 app.use(

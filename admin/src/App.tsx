@@ -69,7 +69,7 @@ function Dashboard() {
   useEffect(() => {
     const fetchStats = async () => {
       try {
-        const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:4000';
+        const apiUrl = import.meta.env.VITE_API_URL || 'https://defi-corre.onrender.com';
         const res = await fetch(`${apiUrl}/admin/stats`);
         const data = await res.json();
         setStats(data);
@@ -87,7 +87,7 @@ function Dashboard() {
       const fetchUsers = async () => {
         setLoadingUsers(true);
         try {
-          const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:4000';
+          const apiUrl = import.meta.env.VITE_API_URL || 'https://defi-corre.onrender.com';
           const res = await fetch(`${apiUrl}/admin/users`);
           const data = await res.json();
           setUsersList(data);
