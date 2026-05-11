@@ -16,6 +16,7 @@ import africaRoutes from "./routes/africaRoutes.js";
 import heliusWebhookRoutes from "./routes/heliusWebhook.js";
 import privyWebhookRoutes from "./routes/privyWebhook.js";
 import pajWebhookRoutes from "./routes/pajWebhook.js";
+import adminRoutes from "./routes/adminRoutes.js";
 
 // Schema bootstrap
 import { runMigrations } from "./migrations.js";
@@ -44,6 +45,7 @@ const ALLOWED_ORIGINS = [
   "https://defi-corre.onrender.com",
   "https://corre.bond",
   "https://www.corre.bond",
+  "https://admin.corre.netlify.app",
 ];
 
 app.use(
@@ -100,6 +102,7 @@ app.use("/withdrawals", withdrawalRoutes);
 app.use("/gas-sponsorship", gasSponsorshipRoutes);
 app.use("/paj-session", pajSessionRoutes);
 app.use("/ai", aiRoutes);
+app.use("/admin", adminRoutes);
 
 // ── Third-party integration routes ───────────────────────────────────────────
 app.use("/fonbnk/africa", africaRoutes);
