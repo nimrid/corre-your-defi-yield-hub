@@ -3,17 +3,84 @@ import { pool } from "../db.js";
 
 export async function getDashboardStats(req: Request, res: Response) {
   try {
-    const usersResult = await pool.query(`SELECT COUNT(*) as count FROM users`);
-    const totalUsers = parseInt(usersResult.rows[0].count, 10);
+    const [
+      statsResult,
+      savingsResult,
+      dailyUsersResult,
+      monthlyUsersResult,
+      dailyTxResult,
+      monthlyTxResult,
+    ] = await Promise.all([
+      pool.query(`
+        SELECT 
+          (SELECT COUNT(*) FROM users) as total_users,
+          (SELECT COUNT(*) FROM suspicious_activity) as suspicious_flags,
+          (SELECT COUNT(*) FROM wallets) as total_wallets,
+          (SELECT COUNT(*) FROM users WHERE updated_at >= NOW() - INTERVAL '60 days') as active_users,
+          (SELECT SUM(usdc_amount::numeric) FROM stock_purchases) as total_stock_purchases,
+          (SELECT SUM(usdc_amount::numeric) FROM stock_sales) as total_stock_sales,
+          (SELECT SUM(amount::numeric) FROM transactions WHERE asset_symbol = 'USDC') as base_transaction_volume
+      `),
+      pool.query(`
+        SELECT 
+          vault_type, 
+          direction, 
+          SUM(usdc_amount::numeric) as total 
+        FROM savings_activity 
+        GROUP BY vault_type, direction
+      `),
+      pool.query(`
+        SELECT TO_CHAR(DATE(created_at), 'YYYY-MM-DD') as date, COUNT(*) as count 
+        FROM users WHERE created_at >= NOW() - INTERVAL '30 days' 
+        GROUP BY DATE(created_at) ORDER BY date ASC
+      `),
+      pool.query(`
+        SELECT TO_CHAR(created_at, 'YYYY-MM') as date, COUNT(*) as count 
+        FROM users WHERE created_at >= NOW() - INTERVAL '12 months' 
+        GROUP BY TO_CHAR(created_at, 'YYYY-MM') ORDER BY date ASC
+      `),
+      pool.query(`
+        WITH all_activity AS (
+          SELECT created_at, amount::numeric as volume FROM transactions WHERE asset_symbol = 'USDC'
+          UNION ALL
+          SELECT created_at, usdc_amount::numeric as volume FROM savings_activity
+          UNION ALL
+          SELECT created_at, usdc_amount::numeric as volume FROM stock_purchases
+          UNION ALL
+          SELECT created_at, usdc_amount::numeric as volume FROM stock_sales
+        )
+        SELECT TO_CHAR(DATE(created_at), 'YYYY-MM-DD') as date, COUNT(*) as count, SUM(volume) as volume 
+        FROM all_activity 
+        WHERE created_at >= NOW() - INTERVAL '30 days' 
+        GROUP BY DATE(created_at) 
+        ORDER BY date ASC
+      `),
+      pool.query(`
+        WITH all_activity AS (
+          SELECT created_at, amount::numeric as volume FROM transactions WHERE asset_symbol = 'USDC'
+          UNION ALL
+          SELECT created_at, usdc_amount::numeric as volume FROM savings_activity
+          UNION ALL
+          SELECT created_at, usdc_amount::numeric as volume FROM stock_purchases
+          UNION ALL
+          SELECT created_at, usdc_amount::numeric as volume FROM stock_sales
+        )
+        SELECT TO_CHAR(created_at, 'YYYY-MM') as date, COUNT(*) as count, SUM(volume) as volume 
+        FROM all_activity 
+        WHERE created_at >= NOW() - INTERVAL '12 months' 
+        GROUP BY TO_CHAR(created_at, 'YYYY-MM') 
+        ORDER BY date ASC
+      `),
+    ]);
 
-    const savingsResult = await pool.query(`
-      SELECT 
-        vault_type, 
-        direction, 
-        SUM(usdc_amount::numeric) as total 
-      FROM savings_activity 
-      GROUP BY vault_type, direction
-    `);
+    const statsRow = statsResult.rows[0];
+    const totalUsers = parseInt(statsRow.total_users || "0", 10);
+    const suspiciousFlags = parseInt(statsRow.suspicious_flags || "0", 10);
+    const totalWallets = parseInt(statsRow.total_wallets || "0", 10);
+    const activeUsers = parseInt(statsRow.active_users || "0", 10);
+    const totalStockPurchases = parseFloat(statsRow.total_stock_purchases || "0");
+    const totalStockSales = parseFloat(statsRow.total_stock_sales || "0");
+    const baseTransactionVolume = parseFloat(statsRow.base_transaction_volume || "0");
 
     let standardSavings = 0;
     let shieldedSavings = 0;
@@ -31,80 +98,10 @@ export async function getDashboardStats(req: Request, res: Response) {
       }
     }
 
-    // Stock investments
-    const stockPurchasesResult = await pool.query(`SELECT SUM(usdc_amount::numeric) as total FROM stock_purchases`);
-    const stockSalesResult = await pool.query(`SELECT SUM(usdc_amount::numeric) as total FROM stock_sales`);
-    
-    const totalStockPurchases = parseFloat(stockPurchasesResult.rows[0].total || '0');
-    const totalStockSales = parseFloat(stockSalesResult.rows[0].total || '0');
     const netStockInvestments = totalStockPurchases + totalStockSales;
-
-    // Suspicious Activity
-    const suspiciousResult = await pool.query(`SELECT COUNT(*) as count FROM suspicious_activity`);
-    const suspiciousFlags = parseInt(suspiciousResult.rows[0].count, 10);
-
-    // Transactions Volume (USDC)
-    const txVolumeResult = await pool.query(`SELECT SUM(amount::numeric) as total FROM transactions WHERE asset_symbol = 'USDC'`);
-    const baseTransactionVolume = parseFloat(txVolumeResult.rows[0].total || '0');
     
     // Add savings and stock investments to the total volume
     const transactionVolume = baseTransactionVolume + netStockInvestments + Math.abs(standardSavings) + Math.abs(shieldedSavings);
-
-    // Total Linked Wallets
-    const walletsResult = await pool.query(`SELECT COUNT(*) as count FROM wallets`);
-    const totalWallets = parseInt(walletsResult.rows[0].count, 10);
-    
-    // Chart Data: Daily/Monthly Users
-    const dailyUsersResult = await pool.query(`
-      SELECT TO_CHAR(DATE(created_at), 'YYYY-MM-DD') as date, COUNT(*) as count 
-      FROM users WHERE created_at >= NOW() - INTERVAL '30 days' 
-      GROUP BY DATE(created_at) ORDER BY date ASC
-    `);
-    
-    const monthlyUsersResult = await pool.query(`
-      SELECT TO_CHAR(created_at, 'YYYY-MM') as date, COUNT(*) as count 
-      FROM users WHERE created_at >= NOW() - INTERVAL '12 months' 
-      GROUP BY TO_CHAR(created_at, 'YYYY-MM') ORDER BY date ASC
-    `);
-
-    // Chart Data: Daily/Monthly Transactions (Aggregated across all tables)
-    const dailyTxResult = await pool.query(`
-      WITH all_activity AS (
-        SELECT created_at, amount::numeric as volume FROM transactions WHERE asset_symbol = 'USDC'
-        UNION ALL
-        SELECT created_at, usdc_amount::numeric as volume FROM savings_activity
-        UNION ALL
-        SELECT created_at, usdc_amount::numeric as volume FROM stock_purchases
-        UNION ALL
-        SELECT created_at, usdc_amount::numeric as volume FROM stock_sales
-      )
-      SELECT TO_CHAR(DATE(created_at), 'YYYY-MM-DD') as date, COUNT(*) as count, SUM(volume) as volume 
-      FROM all_activity 
-      WHERE created_at >= NOW() - INTERVAL '30 days' 
-      GROUP BY DATE(created_at) 
-      ORDER BY date ASC
-    `);
-
-    const monthlyTxResult = await pool.query(`
-      WITH all_activity AS (
-        SELECT created_at, amount::numeric as volume FROM transactions WHERE asset_symbol = 'USDC'
-        UNION ALL
-        SELECT created_at, usdc_amount::numeric as volume FROM savings_activity
-        UNION ALL
-        SELECT created_at, usdc_amount::numeric as volume FROM stock_purchases
-        UNION ALL
-        SELECT created_at, usdc_amount::numeric as volume FROM stock_sales
-      )
-      SELECT TO_CHAR(created_at, 'YYYY-MM') as date, COUNT(*) as count, SUM(volume) as volume 
-      FROM all_activity 
-      WHERE created_at >= NOW() - INTERVAL '12 months' 
-      GROUP BY TO_CHAR(created_at, 'YYYY-MM') 
-      ORDER BY date ASC
-    `);
-
-    // Active Users (from users table, updated_at within 60 days)
-    const activeUsersResult = await pool.query(`SELECT COUNT(*) as count FROM users WHERE updated_at >= NOW() - INTERVAL '60 days'`);
-    const activeUsers = parseInt(activeUsersResult.rows[0].count, 10);
 
     return res.json({
       totalUsers,

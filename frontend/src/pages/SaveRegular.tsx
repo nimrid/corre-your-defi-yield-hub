@@ -123,14 +123,73 @@ const SaveRegular = () => {
           `/withdrawals/pending?privyUserId=${encodeURIComponent(user.id)}`,
         );
 
-        if (!res.ok) {
-          throw new Error(`Failed to fetch pending withdrawals: ${res.status}`);
+        let regular: PendingWithdrawal | null = null;
+
+        if (res.ok) {
+          const data = await res.json();
+          const list: PendingWithdrawal[] = (data?.pendingWithdrawals ?? []) as PendingWithdrawal[];
+          regular = list.find((w) => w.mintAddress === USDC_MINT) ?? null;
         }
 
-        const data = await res.json();
-        const list: PendingWithdrawal[] = (data?.pendingWithdrawals ?? []) as PendingWithdrawal[];
+        // Sync from Lulo if not found in DB
+        const selectedWallet = wallets[0];
+        if (!regular && selectedWallet?.address) {
+          const apiKey = import.meta.env.VITE_LULO_API_KEY;
+          if (apiKey) {
+            const listParams = new URLSearchParams({ owner: selectedWallet.address });
+            const listRes = await fetch(
+              `https://api.lulo.fi/v1/account.withdrawals.listPendingWithdrawals?${listParams.toString()}`,
+              {
+                method: "GET",
+                headers: {
+                  "x-api-key": apiKey,
+                  "Content-Type": "application/json",
+                },
+              },
+            );
 
-        const regular = list.find((w) => w.mintAddress === USDC_MINT) ?? null;
+            if (listRes.ok) {
+              const listData = await listRes.json();
+              const pendingList: any[] = (listData as any)?.pendingWithdrawals ?? [];
+              const matching = pendingList
+                .filter((w) => w && w.owner === selectedWallet.address && w.mintAddress === USDC_MINT)
+                .sort((a, b) => (b.createdTimestamp ?? 0) - (a.createdTimestamp ?? 0))[0];
+
+              if (matching) {
+                await apiFetch("/withdrawals/pending", {
+                  method: "POST",
+                  headers: {
+                    "Content-Type": "application/json",
+                  },
+                  body: JSON.stringify({
+                    privyUserId: user.id,
+                    owner: selectedWallet.address,
+                    withdrawalId: matching.withdrawalId,
+                    mintAddress: matching.mintAddress,
+                    nativeAmount: matching.nativeAmount,
+                    createdTimestamp: matching.createdTimestamp,
+                    cooldownSeconds: Number(matching.cooldownSeconds ?? 0),
+                    source: "save_regular_withdraw_sync",
+                  }),
+                }).catch(() => { });
+
+                const createdSec = Number(matching.createdTimestamp ?? 0);
+                const cooldownSec = Number(matching.cooldownSeconds ?? 0);
+                const readyAtMs = (createdSec + cooldownSec) * 1000;
+                regular = {
+                  withdrawalId: matching.withdrawalId,
+                  mintAddress: matching.mintAddress,
+                  nativeAmount: matching.nativeAmount,
+                  createdTimestamp: createdSec,
+                  cooldownSeconds: cooldownSec,
+                  readyAt: new Date(readyAtMs).toISOString(),
+                  canComplete: Date.now() >= readyAtMs,
+                };
+              }
+            }
+          }
+        }
+
         setPendingWithdrawal(regular);
       } catch (err: any) {
         setPendingError(err?.message ?? "Failed to load pending withdrawals");
@@ -140,7 +199,7 @@ const SaveRegular = () => {
     };
 
     fetchPending();
-  }, [user?.id]);
+  }, [user?.id, wallets]);
 
   const handleDeposit = async (e: FormEvent) => {
     e.preventDefault();
@@ -766,14 +825,14 @@ const SaveRegular = () => {
                     className="font-semibold break-all"
                     title={
                       regularInterestEarned !== null
-                        ? `${regularInterestEarned.toFixed(2)} USDC`
+                        ? `${regularInterestEarned.toFixed(4)} USDC`
                         : undefined
                     }
                   >
                     {regularInterestEarned !== null
                       ? `${regularInterestEarned.toLocaleString(undefined, {
-                        minimumFractionDigits: 2,
-                        maximumFractionDigits: 2,
+                        minimumFractionDigits: 4,
+                        maximumFractionDigits: 4,
                       })} USDC`
                       : "-"}
                   </p>
@@ -790,10 +849,10 @@ const SaveRegular = () => {
             ) : pendingWithdrawal ? (
               <>
                 <p className="text-muted-foreground">
-                  Pending standard withdrawal ID {pendingWithdrawal.withdrawalId}
+                  Pending standard withdrawal (ID: {pendingWithdrawal.withdrawalId})
                 </p>
                 <p className="text-muted-foreground">
-                  Amount (native): {pendingWithdrawal.nativeAmount}
+                  Amount: {(Number(pendingWithdrawal.nativeAmount) / 1000000).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 6 })} USDC
                 </p>
                 {pendingWithdrawal.readyAt && (
                   <p className="text-muted-foreground">
@@ -847,6 +906,9 @@ const SaveRegular = () => {
                 {loading ? "Withdrawing..." : "Withdraw"}
               </Button>
             </div>
+            <p className="text-[11px] text-muted-foreground/60 leading-relaxed">
+              Withdrawals have a ~24 hr cooldown. Once ready, a confirmation code will appear for you to finalize.
+            </p>
 
             {pendingWithdrawal && (
               <div className="flex gap-3 pt-2">

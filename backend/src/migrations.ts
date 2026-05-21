@@ -225,6 +225,14 @@ export async function runMigrations(): Promise<void> {
 
     `CREATE INDEX IF NOT EXISTS idx_stock_sales_user_created
        ON stock_sales(user_id, created_at DESC)`,
+
+    // Users registration sorting (Admin panel)
+    `CREATE INDEX IF NOT EXISTS idx_users_created_at
+       ON users(created_at DESC)`,
+
+    // Savings history pagination and sorting
+    `CREATE INDEX IF NOT EXISTS idx_savings_activity_user_created
+       ON savings_activity(user_id, created_at DESC)`,
   ];
 
   for (const sql of statements) {

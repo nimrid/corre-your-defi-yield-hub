@@ -498,11 +498,11 @@ const SaveProtected = () => {
                 <p className="text-muted-foreground truncate">Earnings so far</p>
                 <p
                   className="font-semibold break-all"
-                  title={protectedInterest !== null ? `${protectedInterest.toFixed(2)} USDC` : undefined}
+                  title={protectedInterest !== null ? `${protectedInterest.toFixed(4)} USDC` : undefined}
                 >
                   {protectedInterest !== null ? `${protectedInterest.toLocaleString(undefined, {
-                    minimumFractionDigits: 2,
-                    maximumFractionDigits: 2,
+                    minimumFractionDigits: 4,
+                    maximumFractionDigits: 4,
                   })} USDC` : "-"}
                 </p>
               </div>

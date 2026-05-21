@@ -13,7 +13,7 @@ if (!connectionString) {
 // Neon's serverless pooler (PgBouncer) closes idle connections aggressively.
 // Keep the pool small, idle-timeout short (so WE release before Neon drops),
 // and connection-timeout generous enough to handle cold-start wake-up (~3 s).
-const MAX_CONNECTIONS = parseInt(process.env.DB_POOL_MAX ?? "5", 10);
+const MAX_CONNECTIONS = parseInt(process.env.DB_POOL_MAX ?? "20", 10);
 
 export const pool = new Pool({
   connectionString,

@@ -38,7 +38,7 @@ const Terms = () => {
               <p>By accessing or using the interface at https://corre.bond/ (the "Interface") or the Corre smart contracts (the "Protocol"), you agree to be bound by these Terms of Service. If you do not agree to these terms, you must not access or use the Interface or the Protocol.</p>
               
               <h3 className="font-medium text-foreground mt-4">2. Nature of the Interface</h3>
-              <p>The Interface is a web-based user interface that provides access to the Corre Protocol, a decentralized autonomous smart contract system deployed on the [Ethereum / Polygon / Arbitrum] blockchain.</p>
+              <p>The Interface is a web-based user interface that provides access to the Corre Protocol, a decentralized autonomous smart contract system deployed on the Solana blockchain.</p>
               <ul className="list-disc pl-5 space-y-2">
                 <li>Non-Custodial: Corre is a non-custodial protocol. You retain full control of your private keys and assets at all times. We do not have access to your funds, nor can we recover your funds if you lose your private keys.</li>
                 <li>No Intermediary: The Interface is distinct from the Protocol. The Interface is merely a visual tool to interact with the blockchain.</li>

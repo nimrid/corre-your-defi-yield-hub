@@ -720,6 +720,13 @@ const Home = () => {
           <button
             className="flex-1 text-sm sm:text-base font-semibold px-3 py-2 rounded-full bg-primary text-primary-foreground hover:opacity-90 transition"
             type="button"
+            onClick={() => { window.scrollTo({ top: 0, behavior: 'smooth' }); navigate('/home'); }}
+          >
+            Home
+          </button>
+          <button
+            className="flex-1 text-sm sm:text-base font-medium px-3 py-2 rounded-full hover:bg-secondary transition-colors"
+            type="button"
             onClick={() => navigate("/send")}
           >
             Send

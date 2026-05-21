@@ -33,13 +33,13 @@ const Privacy = () => {
               <h2 className="text-lg font-semibold text-foreground">2. INFORMATION WE COLLECT</h2>
               
               <h3 className="font-medium text-foreground mt-4">A. Information You Provide</h3>
-              <p>We do not create user accounts. We do not ask for your name, email address, phone number, or password to use the Interface.</p>
+              <p>We create user accounts by collecting email address to use the Interface.</p>
               <ul className="list-disc pl-5 space-y-2">
                 <li>Support Inquiries: If you contact us directly via email or social media for support, we may collect your email address or handle to respond to your inquiry.</li>
               </ul>
 
               <h3 className="font-medium text-foreground mt-4">B. Information Automatically Collected (Web Data)</h3>
-              <p>When you visit the Site, we and our service providers (such as Netlify) may automatically log standard technical information, including:</p>
+              <p>When you visit the Site, we and our service providers may automatically log standard technical information, including:</p>
               <ul className="list-disc pl-5 space-y-2">
                 <li>Device Information: Your web browser type, operating system, and device type.</li>
                 <li>Network Information: Your IP address, referring domains, and page exit data.</li>
@@ -47,9 +47,9 @@ const Privacy = () => {
               </ul>
 
               <h3 className="font-medium text-foreground mt-4">C. Blockchain Information (Wallet Data)</h3>
-              <p>When you "Connect Wallet" to our Interface, we collect:</p>
+              <p>When you sign in to our Interface, we collect:</p>
               <ul className="list-disc pl-5 space-y-2">
-                <li>Public Wallet Address: We read your public Ethereum (or compatible chain) address to display your balances and allow you to sign transactions.</li>
+                <li>Public Wallet Address: We read your public solana address to display your balances and allow you to sign transactions.</li>
                 <li>Transaction History: We may read your transaction history associated with the Corre smart contracts to display your past activity on the Interface.</li>
               </ul>
               <p className="font-medium">Important Note: Your public wallet address and all transactions you approve are written to the public blockchain. This data is immutable, public, and outside of our control. We cannot "delete" data from the blockchain.</p>
@@ -81,8 +81,8 @@ const Privacy = () => {
               <p>We use third-party services to operate the Interface. These providers may have their own privacy policies:</p>
               <ul className="list-disc pl-5 space-y-2">
                 <li>Hosting: Our site is hosted on Netlify. Netlify collects access logs including IP addresses for security and performance.</li>
-                <li>RPC Providers: To read data from the blockchain, the Interface may connect to Remote Procedure Call (RPC) nodes (e.g., Infura, Alchemy). These providers may log your IP address and wallet address when you make a transaction request.</li>
-                <li>Wallet Providers: Your interaction with the blockchain is mediated by your wallet provider (e.g., MetaMask, WalletConnect). We do not control their data practices.</li>
+                <li>RPC Providers: To read data from the blockchain, the Interface may connect to Remote Procedure Call (RPC) nodes (e.g., Helium, Alchemy). These providers may log your IP address and wallet address when you make a transaction request.</li>
+                <li>Wallet Providers: Your interaction with the blockchain is mediated by your wallet provider. We do not control their data practices.</li>
               </ul>
             </section>
 
@@ -117,7 +117,7 @@ const Privacy = () => {
               <h2 className="text-lg font-semibold text-foreground">10. CONTACT US</h2>
               <p>If you have any questions about this Privacy Policy, please contact us:</p>
               <ul className="list-disc pl-5 space-y-2">
-                <li>By Email: edidionguwemedimo@gmail.com</li>
+                <li>By Email: edidiong.uwemedimo@corre.bond</li>
                 <li>By Telegram: <a href="https://t.me/+_ExsYWddoeNmZTA0" className="text-primary hover:underline">https://t.me/+_ExsYWddoeNmZTA0</a></li>
               </ul>
             </section>

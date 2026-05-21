@@ -207,20 +207,6 @@ function Dashboard() {
                     <h2 className="text-2xl lg:text-3xl font-bold text-slate-800 tracking-tight">Dashboard Overview</h2>
                     <p className="text-slate-500 mt-1 text-sm font-medium">Welcome back. Here's what's happening across Corre today.</p>
                   </div>
-                  <div className="bg-white rounded-xl p-1 flex shadow-sm border border-slate-200/80 w-full sm:w-auto">
-                    <button 
-                      onClick={() => setTimeframe('daily')} 
-                      className={`flex-1 sm:flex-none px-6 py-2 text-sm font-semibold rounded-lg transition-all ${timeframe === 'daily' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'}`}
-                    >
-                      Daily
-                    </button>
-                    <button 
-                      onClick={() => setTimeframe('monthly')} 
-                      className={`flex-1 sm:flex-none px-6 py-2 text-sm font-semibold rounded-lg transition-all ${timeframe === 'monthly' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'}`}
-                    >
-                      Monthly
-                    </button>
-                  </div>
                 </div>
 
                 {/* Primary Metrics (Top 3) */}
@@ -295,8 +281,22 @@ function Dashboard() {
                 <div className="flex items-center justify-between mb-8">
                   <h3 className="font-bold text-lg text-slate-800 flex items-center gap-3">
                     <div className="w-1.5 h-6 bg-blue-500 rounded-full"></div>
-                    User Signups <span className="text-slate-400 font-normal text-sm ml-1">({timeframe})</span>
+                    User Signups
                   </h3>
+                  <div className="bg-slate-100/80 rounded-xl p-0.5 flex border border-slate-200/50">
+                    <button 
+                      onClick={() => setTimeframe('daily')} 
+                      className={`px-4 py-1.5 text-xs font-semibold rounded-lg transition-all ${timeframe === 'daily' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}
+                    >
+                      Daily
+                    </button>
+                    <button 
+                      onClick={() => setTimeframe('monthly')} 
+                      className={`px-4 py-1.5 text-xs font-semibold rounded-lg transition-all ${timeframe === 'monthly' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}
+                    >
+                      Monthly
+                    </button>
+                  </div>
                 </div>
                 <div className="h-[320px]">
                   <ResponsiveContainer width="100%" height="100%">
