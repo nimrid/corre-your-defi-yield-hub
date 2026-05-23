@@ -568,8 +568,8 @@ const InvestStockDetails = () => {
                       outputMint: token.address,
                       amount: String(rawAmount),
                       taker: takerAddress,
-                      referralAccount: "Ep5mxWibjp2UbEXipLCCXHgJVVtMwFbVCgk5ftuUfRxN",
-                      referralFee: "100",
+//                      referralAccount: "3wuH9DKWkRLY5tTHM2NEBJJsL2ouAvFYWAzEA7khqBdN",
+//                      referralFee: "100",
                     });
                     const url = `${base}?${params.toString()}`;
 
@@ -946,8 +946,8 @@ const InvestStockDetails = () => {
                       outputMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
                       amount: String(rawAmount),
                       taker: takerAddress,
-                      referralAccount: "Ep5mxWibjp2UbEXipLCCXHgJVVtMwFbVCgk5ftuUfRxN",
-                      referralFee: "100",
+//                      referralAccount: "3wuH9DKWkRLY5tTHM2NEBJJsL2ouAvFYWAzEA7khqBdN",
+//                      referralFee: "100",
                     });
                     const url = `${base}?${params.toString()}`;
 
