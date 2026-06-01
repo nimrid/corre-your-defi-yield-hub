@@ -21,6 +21,15 @@ export default defineConfig(({ mode }) => {
         },
         rewrite: (path) => path.replace(/^\/api/, ""),
       },
+      "/tokens-api": {
+        target: "https://api.tokens.xyz",
+        changeOrigin: true,
+        secure: true,
+        headers: {
+          "x-api-key": env.VITE_TOKENS_API_KEY || "",
+        },
+        rewrite: (path) => path.replace(/^\/tokens-api/, ""),
+      },
     },
   },
   build: {
