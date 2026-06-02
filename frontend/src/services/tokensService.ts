@@ -22,11 +22,18 @@
 const BASE_URL = "/tokens-api";
 
 async function tokensFetch<T>(path: string): Promise<T> {
+  const apiKey = import.meta.env.VITE_TOKENS_API_KEY;
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+  };
+  
+  if (apiKey) {
+    headers["x-api-key"] = apiKey;
+  }
+
   const res = await fetch(`${BASE_URL}${path}`, {
     method: "GET",
-    headers: {
-      "Content-Type": "application/json",
-    },
+    headers,
   });
   if (!res.ok) {
     const text = await res.text().catch(() => "");

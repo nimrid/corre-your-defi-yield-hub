@@ -10,6 +10,12 @@
   force = true
 
 [[redirects]]
+  from = "/tokens-api/*"
+  to = "https://api.tokens.xyz/:splat"
+  status = 200
+  force = true
+
+[[redirects]]
   from = "/*"
   to = "/index.html"
   status = 200
