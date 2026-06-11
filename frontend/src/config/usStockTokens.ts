@@ -8,6 +8,10 @@ export interface USStockTokenConfig {
 export const US_STOCK_TOKENS: USStockTokenConfig[] = [
   { mint: "XsueG8BtpquVJX9LVLLEGuViXUungE6WmK5YZ3p3bd1", name: "CRCLx", symbol: "CRCLX" },
   { mint: "XsDoVfqeBukxuZHWhdvWHBhgEHjGNst4MLodqsJHzoB", name: "Tesla", symbol: "TSLA" },
+  { mint: "PrekqLJvJ3qVdXmBGDiexvwUTF4rLFDa6HWS4HJbw9S", name: "NEURALINK", symbol: "NEURALINK" },
+  { mint: "PreANxuXjsy2pvisWWMNB6YaJNzr7681wJJr2rHsfTh", name: "SPACEX", symbol: "SPACEX" },
+  { mint: "XsQLZycSZ7QnBBdBXQaTbQdiUcbRqjNJgyBGAMzhHav", name: "MUx", symbol: "MUx" },
+
   { mint: "XsP7xzNPvEHS1m6qfanPUGjNmdnmsLKEoNAnHjdxxyZ", name: "MSTRx", symbol: "MSTRX" },
   { mint: "XsoCS1TfEyfFhfvj8EtZ528L3CaKBDBRqRapnBbDF2W", name: "S&P 500", symbol: "SP500" },
   { mint: "Xsc9qvGR1efVDFGLrVsmkzv3qi45LTBjeUKSPmx9qEh", name: "Nvidia", symbol: "NVDA" },

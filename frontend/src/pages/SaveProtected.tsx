@@ -12,6 +12,7 @@ import { Buffer } from "buffer";
 
 const USDC_MINT = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
 const LULO_REFERRER = "6pZiqTT81nKLxMvQay7P6TrRx9NdWG5zbakaZdQoWoUb";
+const savings_base_url = "https://api.lulo.fi";
 
 const SaveProtected = () => {
   const navigate = useNavigate();
@@ -41,7 +42,7 @@ const SaveProtected = () => {
       }
 
       try {
-        const url = new URL("https://api.lulo.fi/v1/account.getAccount");
+        const url = new URL(`${savings_base_url}/v1/account.getAccount`);
         url.searchParams.set("owner", owner);
 
         const res = await fetch(url.toString(), {
@@ -73,7 +74,7 @@ const SaveProtected = () => {
       try {
         const { Connection, PublicKey } = await import("@solana/web3.js");
         const connection = new Connection(
-          (import.meta.env.VITE_SOLANA_RPC ?? "https://solana-mainnet.g.alchemy.com/v2/C5-LCLXSwlCEtsquSDPIj").replace(/^['"]|['"]$/g, "").trim(),
+          (import.meta.env.VITE_SOLANA_RPC ?? "").replace(/^['"]|['"]$/g, "").trim(),
           "confirmed",
         );
         const ownerPk = new PublicKey(owner);
@@ -159,7 +160,7 @@ const SaveProtected = () => {
 
       const protectedAmount = Number(amount); // pass raw USDC amount, no 6-decimal conversion
 
-      const res = await fetch("https://api.lulo.fi/v1/generate.transactions.deposit", {
+      const res = await fetch(`${savings_base_url}/v1/generate.transactions.deposit`, {
         method: "POST",
         headers: {
           "x-api-key": apiKey,
@@ -346,7 +347,7 @@ const SaveProtected = () => {
 
       const withdrawAmount = Number(amount); // pass raw USDC amount, no 6-decimal conversion
 
-      const res = await fetch("https://api.lulo.fi/v1/generate.transactions.withdrawProtected", {
+      const res = await fetch(`${savings_base_url}/v1/generate.transactions.withdrawProtected`, {
         method: "POST",
         headers: {
           "x-api-key": apiKey,

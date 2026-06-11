@@ -256,7 +256,7 @@ export function useTradeDialog(opts: UseTradeDialogOptions) {
 
     const apiKey = import.meta.env.VITE_JUP_API_KEY as string | undefined;
     if (!apiKey) {
-      setState((s) => ({ ...s, executeError: "Jupiter API key is not configured (VITE_JUP_API_KEY)" }));
+      setState((s) => ({ ...s, executeError: "API key is not configured" }));
       return;
     }
 
@@ -329,6 +329,7 @@ export function useTradeDialog(opts: UseTradeDialogOptions) {
       if (privyUserId) {
         const ownerAddress = await resolveOwnerAddress();
         const signature = (execData as any)?.signature ?? (execData as any)?.txid ?? null;
+        const formattedOutAmountRaw = state.outAmountRaw ? Number(state.outAmountRaw).toLocaleString("en-US", { useGrouping: false, maximumFractionDigits: 6 }) : "0";
 
         // Generic transaction entry
         void apiFetch("/transactions", {
@@ -338,14 +339,14 @@ export function useTradeDialog(opts: UseTradeDialogOptions) {
             privyUserId,
             chainType: "solana",
             assetSymbol: direction === "buy" ? (token.symbol ?? "USDC") : "USDC",
-            amount: direction === "buy" ? input : state.outAmount,
+            amount: formattedOutAmountRaw,
             direction: "incoming",
             txSignature: signature,
             fromAddress: "jupiter",
             toAddress: ownerAddress ?? null,
             source: direction === "buy" ? "invest_buy" : "invest_sell",
           }),
-        }).catch(() => {});
+        }).catch(() => { });
 
         // Structured stock purchase/sale entry
         const endpoint = direction === "buy" ? "/stock-purchases" : "/stock-sales";
@@ -357,14 +358,14 @@ export function useTradeDialog(opts: UseTradeDialogOptions) {
             stockMint: token.address,
             stockSymbol: token.symbol,
             stockName: token.name,
-            usdcAmount: direction === "buy" ? input : (state.outAmountRaw ?? state.outAmount),
-            sharesAmount: direction === "buy" ? (state.outAmountRaw ?? undefined) : (input || undefined),
+            usdcAmount: direction === "buy" ? input : formattedOutAmountRaw,
+            sharesAmount: direction === "buy" ? formattedOutAmountRaw : input,
             walletAddress: ownerAddress ?? null,
             txSignature: signature,
             jupiterRequestId: state.requestId,
             source: direction === "buy" ? "invest_buy" : "invest_sell",
           }),
-        }).catch(() => {});
+        }).catch(() => { });
       }
 
       // ── Optimistic holdings update ──────────────────────────────────────

@@ -12,6 +12,7 @@ import { Buffer } from "buffer";
 
 const USDC_MINT = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
 const LULO_REFERRER = "6pZiqTT81nKLxMvQay7P6TrRx9NdWG5zbakaZdQoWoUb";
+const savings_base_url = "https://api.lulo.fi";
 
 interface PendingWithdrawal {
   withdrawalId: number;
@@ -58,7 +59,7 @@ const SaveRegular = () => {
         setPositionError(null);
 
         const params = new URLSearchParams({ owner: selectedWallet.address });
-        const res = await fetch(`https://api.lulo.fi/v1/account.getAccount?${params.toString()}`, {
+        const res = await fetch(`${savings_base_url}/v1/account.getAccount?${params.toString()}`, {
           method: "GET",
           headers: {
             "x-api-key": apiKey,
@@ -138,7 +139,7 @@ const SaveRegular = () => {
           if (apiKey) {
             const listParams = new URLSearchParams({ owner: selectedWallet.address });
             const listRes = await fetch(
-              `https://api.lulo.fi/v1/account.withdrawals.listPendingWithdrawals?${listParams.toString()}`,
+              `${savings_base_url}/v1/account.withdrawals.listPendingWithdrawals?${listParams.toString()}`,
               {
                 method: "GET",
                 headers: {
@@ -268,7 +269,7 @@ const SaveRegular = () => {
 
       const regularAmount = Number(amount); // pass raw USDC amount, no 6-decimal conversion
 
-      const res = await fetch("https://api.lulo.fi/v1/generate.transactions.deposit", {
+      const res = await fetch(`${savings_base_url}/v1/generate.transactions.deposit`, {
         method: "POST",
         headers: {
           "x-api-key": apiKey,
@@ -446,7 +447,7 @@ const SaveRegular = () => {
       }
 
       const completeRes = await fetch(
-        "https://api.lulo.fi/v1/generate.transactions.completeRegularWithdrawal",
+        `${savings_base_url}/v1/generate.transactions.completeRegularWithdrawal`,
         {
           method: "POST",
           headers: {
@@ -636,7 +637,7 @@ const SaveRegular = () => {
 
       // Phase 1: initiate regular withdraw
       const initRes = await fetch(
-        "https://api.lulo.fi/v1/generate.transactions.initiateRegularWithdraw",
+        `${savings_base_url}/v1/generate.transactions.initiateRegularWithdraw`,
         {
           method: "POST",
           headers: {
@@ -701,7 +702,7 @@ const SaveRegular = () => {
       // then persist it in our backend so cooldown state is shared across devices.
       const listParams = new URLSearchParams({ owner });
       const listRes = await fetch(
-        `https://api.lulo.fi/v1/account.withdrawals.listPendingWithdrawals?${listParams.toString()}`,
+        `${savings_base_url}/v1/account.withdrawals.listPendingWithdrawals?${listParams.toString()}`,
         {
           method: "GET",
           headers: {

@@ -291,7 +291,8 @@ const SendBankAfrica = () => {
           mint: USDC_MINT,
           chain: Chain.SOLANA,
           webhookURL: webhookUrl("/webhook/paj-ramp"),
-        },
+          businessUSDCFee: 0.5,
+        } as any,
         token,
       );
       console.log("[Offramp] Order created successfully:", order);
