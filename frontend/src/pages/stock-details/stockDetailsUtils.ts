@@ -5,6 +5,7 @@
 export interface TokenStatsWindow {
   priceChange?: number | null;
   buyVolume?: number | null;
+  sellVolume?: number | null;
 }
 
 export interface TokenDetails {
@@ -16,6 +17,8 @@ export interface TokenDetails {
   circSupply: number | null;
   totalSupply: number | null;
   mcap: number | null;
+  fdv: number | null;
+  liquidity: number | null;
   usdPrice: number | null;
   decimals?: number | null;
   stats5m?: TokenStatsWindow;

@@ -74,6 +74,8 @@ export function useTokenDetails(mint: string | undefined) {
           circSupply: typeof first.circSupply === "number" ? first.circSupply : null,
           totalSupply: typeof first.totalSupply === "number" ? first.totalSupply : null,
           mcap: typeof first.mcap === "number" ? first.mcap : null,
+          fdv: typeof first.fdv === "number" ? first.fdv : null,
+          liquidity: typeof first.liquidity === "number" ? first.liquidity : null,
           usdPrice: typeof first.usdPrice === "number" ? first.usdPrice : null,
           decimals: typeof first.decimals === "number" ? first.decimals : null,
           stats5m: first.stats5m,

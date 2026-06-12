@@ -50,40 +50,46 @@ export default function StockEnrichment({
 
           {/* Key metrics row */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm">
-            {tokensAsset.volume24hUSD != null && (
+            {(token.stats24h?.buyVolume != null || tokensAsset.volume24hUSD != null) && (
               <div className="rounded-xl bg-secondary/40 border border-border/60 p-3 flex flex-col">
                 <span className="text-xs text-muted-foreground flex items-center gap-1"><BarChart2 className="w-3 h-3" /> 24h Volume</span>
-                <span className="mt-1 font-semibold">{formatUsd(tokensAsset.volume24hUSD)}</span>
+                <span className="mt-1 font-semibold">{formatUsd((token.stats24h?.buyVolume || 0) + (token.stats24h?.sellVolume || 0) || tokensAsset.volume24hUSD || 0)}</span>
               </div>
             )}
-            {tokensAsset.marketCap != null && (
+            {(token.mcap != null || tokensAsset.marketCap != null) && (
               <div className="rounded-xl bg-secondary/40 border border-border/60 p-3 flex flex-col">
                 <span className="text-xs text-muted-foreground">Market Cap</span>
-                <span className="mt-1 font-semibold">{formatUsd(tokensAsset.marketCap)}</span>
+                <span className="mt-1 font-semibold">{formatUsd(token.mcap ?? tokensAsset.marketCap)}</span>
               </div>
             )}
-            {tokensAsset.fdv != null && (
+            {(token.fdv != null || tokensAsset.fdv != null) && (
               <div className="rounded-xl bg-secondary/40 border border-border/60 p-3 flex flex-col">
                 <span className="text-xs text-muted-foreground">FDV</span>
-                <span className="mt-1 font-semibold">{formatUsd(tokensAsset.fdv)}</span>
+                <span className="mt-1 font-semibold">{formatUsd(token.fdv ?? tokensAsset.fdv)}</span>
               </div>
             )}
-            {tokensAsset.liquidity != null && (
+            {(token.liquidity != null || tokensAsset.liquidity != null) && (
               <div className="rounded-xl bg-secondary/40 border border-border/60 p-3 flex flex-col">
                 <span className="text-xs text-muted-foreground">Liquidity</span>
-                <span className="mt-1 font-semibold">{formatUsd(tokensAsset.liquidity)}</span>
+                <span className="mt-1 font-semibold">{formatUsd(token.liquidity ?? tokensAsset.liquidity)}</span>
               </div>
             )}
             {tokensAsset.allTimeHigh != null && (
               <div className="rounded-xl bg-secondary/40 border border-border/60 p-3 flex flex-col">
                 <span className="text-xs text-muted-foreground">All-Time High</span>
-                <span className="mt-1 font-semibold">{formatUsd(tokensAsset.allTimeHigh)}</span>
+                <span className="mt-1 font-semibold">
+                  {formatUsd(
+                    tokensPriceChart && tokensPriceChart.candles.length > 0 && tokensAsset.price
+                      ? tokensAsset.allTimeHigh * (tokensAsset.price / tokensPriceChart.candles[tokensPriceChart.candles.length - 1].close)
+                      : tokensAsset.allTimeHigh
+                  )}
+                </span>
               </div>
             )}
-            {tokensAsset.circulatingSupply != null && (
+            {(token.circSupply != null || tokensAsset.circulatingSupply != null) && (
               <div className="rounded-xl bg-secondary/40 border border-border/60 p-3 flex flex-col">
                 <span className="text-xs text-muted-foreground">Circ. Supply</span>
-                <span className="mt-1 font-semibold">{formatNumber(tokensAsset.circulatingSupply, { maximumFractionDigits: 0 })}</span>
+                <span className="mt-1 font-semibold">{formatNumber(token.circSupply ?? tokensAsset.circulatingSupply, { maximumFractionDigits: 0 })}</span>
               </div>
             )}
           </div>
@@ -141,17 +147,24 @@ export default function StockEnrichment({
           {tokensPriceChart && tokensPriceChart.candles.length > 0 && (
             <div className="rounded-xl bg-secondary/40 border border-border/60 p-4">
               <TokensPriceChart
-                candles={
-                  tokensAsset?.price != null
-                    ? [
-                        ...tokensPriceChart.candles.slice(0, -1),
-                        {
-                          ...tokensPriceChart.candles[tokensPriceChart.candles.length - 1],
-                          close: tokensAsset.price,
-                        },
-                      ]
-                    : tokensPriceChart.candles
-                }
+                candles={(() => {
+                  if (!tokensPriceChart || !tokensPriceChart.candles || tokensPriceChart.candles.length === 0) return [];
+                  
+                  if (tokensAsset?.price != null) {
+                    const originalLastClose = tokensPriceChart.candles[tokensPriceChart.candles.length - 1].close;
+                    if (originalLastClose && originalLastClose > 0) {
+                      const ratio = tokensAsset.price / originalLastClose;
+                      return tokensPriceChart.candles.map(c => ({
+                        ...c,
+                        open: c.open * ratio,
+                        high: c.high * ratio,
+                        low: c.low * ratio,
+                        close: c.close * ratio,
+                      }));
+                    }
+                  }
+                  return tokensPriceChart.candles;
+                })()}
                 interval={tokensPriceChart.interval}
                 symbol={token.symbol}
                 lastUpdated={chartLastUpdated}
