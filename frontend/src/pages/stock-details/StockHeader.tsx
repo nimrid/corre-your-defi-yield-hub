@@ -45,7 +45,7 @@ export default function StockHeader({ token, tokensAsset, latestChartPrice }: St
       </div>
       <div className="text-right">
         <p className="text-lg sm:text-2xl font-bold">
-          {formatUsd(latestChartPrice ?? (tokensAsset?.price ?? token.usdPrice))}
+          {formatUsd(tokensAsset?.price ?? latestChartPrice ?? token.usdPrice)}
         </p>
         {/* 24h change from Tokens API */}
         {tokensAsset?.priceChange24hPercent != null && (

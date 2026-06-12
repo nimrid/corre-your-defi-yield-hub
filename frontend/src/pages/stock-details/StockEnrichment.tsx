@@ -90,7 +90,8 @@ export default function StockEnrichment({
 
           {/* OHLCV latest bar */}
           {tokensAsset.ohlcv && tokensAsset.ohlcv.length > 0 && (() => {
-            const bar = tokensAsset.ohlcv![tokensAsset.ohlcv!.length - 1];
+            const lastBar = tokensAsset.ohlcv![tokensAsset.ohlcv!.length - 1];
+            const bar = { ...lastBar, close: tokensAsset.price ?? lastBar.close };
             return (
               <div className="rounded-xl bg-secondary/40 border border-border/60 p-3">
                 <p className="text-xs text-muted-foreground font-semibold uppercase tracking-wide mb-2">Latest OHLCV</p>
@@ -140,7 +141,17 @@ export default function StockEnrichment({
           {tokensPriceChart && tokensPriceChart.candles.length > 0 && (
             <div className="rounded-xl bg-secondary/40 border border-border/60 p-4">
               <TokensPriceChart
-                candles={tokensPriceChart.candles}
+                candles={
+                  tokensAsset?.price != null
+                    ? [
+                        ...tokensPriceChart.candles.slice(0, -1),
+                        {
+                          ...tokensPriceChart.candles[tokensPriceChart.candles.length - 1],
+                          close: tokensAsset.price,
+                        },
+                      ]
+                    : tokensPriceChart.candles
+                }
                 interval={tokensPriceChart.interval}
                 symbol={token.symbol}
                 lastUpdated={chartLastUpdated}
