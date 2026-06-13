@@ -16,6 +16,8 @@ import SaveProtected from "./pages/SaveProtected";
 import Invest from "./pages/Invest";
 import InvestUSStocks from "./pages/InvestUSStocks";
 import InvestStockDetails from "./pages/InvestStockDetails";
+import InvestPrivateMarket from "./pages/InvestPrivateMarket";
+import InvestPrivateMarketDetails from "./pages/InvestPrivateMarketDetails";
 import SendBankAfrica from "./pages/SendBankAfrica";
 import BuyUSDC from "./pages/BuyUSDC";
 import BuyUSDCNaira from "./pages/BuyUSDCNaira";
@@ -126,6 +128,8 @@ const App = () => {
             <Route path="/invest" element={<Invest />} />
             <Route path="/invest/us-stocks" element={<InvestUSStocks />} />
             <Route path="/invest/us-stocks/:mint" element={<InvestStockDetails />} />
+            <Route path="/invest/private-market" element={<InvestPrivateMarket />} />
+            <Route path="/invest/private-market/:id" element={<InvestPrivateMarketDetails />} />
             <Route path="/send/bank/africa" element={<SendBankAfrica />} />
             <Route path="/buy-usdc" element={<BuyUSDC />} />
             <Route path="/buy-usdc/naira" element={<BuyUSDCNaira />} />

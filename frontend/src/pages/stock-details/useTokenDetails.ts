@@ -43,10 +43,12 @@ export function useTokenDetails(mint: string | undefined) {
       return;
     }
 
-    const fetchToken = async () => {
+    const fetchToken = async (isInitial = true) => {
       try {
-        setLoading(true);
-        setError(null);
+        if (isInitial) {
+          setLoading(true);
+          setError(null);
+        }
 
         const url = buildTokenUrl(mint);
         const res = await fetch(url, {
@@ -61,7 +63,7 @@ export function useTokenDetails(mint: string | undefined) {
         const data: any = await res.json();
         const first = Array.isArray(data) && data.length > 0 ? data[0] : null;
         if (!first) {
-          setError("Could not find this stock on Jupiter");
+          if (isInitial) setError("Could not find this stock on Jupiter");
           return;
         }
 
@@ -88,13 +90,19 @@ export function useTokenDetails(mint: string | undefined) {
 
         setToken(mapped);
       } catch (err: any) {
-        setError(err?.message ?? "Failed to load stock details");
+        if (isInitial) setError(err?.message ?? "Failed to load stock details");
       } finally {
-        setLoading(false);
+        if (isInitial) setLoading(false);
       }
     };
 
-    void fetchToken();
+    void fetchToken(true);
+
+    const interval = setInterval(() => {
+      void fetchToken(false);
+    }, 30_000);
+
+    return () => clearInterval(interval);
   }, [mint]);
 
   // ── Tokens.xyz enrichment + auto-refresh ──────────────────────────────────
@@ -161,7 +169,9 @@ export function useTokenDetails(mint: string | undefined) {
     token,
     loading,
     error,
-    tokensAsset,
+    tokensAsset: tokensAsset && token?.usdPrice != null
+      ? { ...tokensAsset, price: token.usdPrice }
+      : tokensAsset,
     tokensPriceChart,
     tokensLoading,
     chartLastUpdated,
