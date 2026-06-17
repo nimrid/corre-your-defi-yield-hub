@@ -3,6 +3,7 @@ import type { PoolClient } from "pg";
 import { pool } from "../db.js";
 import { resolveUserId } from "../lib/dbHelpers.js";
 import { invalidateCache } from "../lib/responseCache.js";
+import { recordReferralAction, REFERRAL_POINTS } from "../lib/referral.js";
 
 type StockBody = {
   privyUserId: string;
@@ -204,6 +205,9 @@ export async function createStockPurchase(req: Request, res: Response) {
     ]);
 
     await client.query("COMMIT");
+
+    await recordReferralAction(userId, "BUY_US_STOCK", REFERRAL_POINTS.BUY_US_STOCK);
+
     invalidateCache(`/stocks/history/${body.privyUserId}`);
     invalidateCache(`/stock-history/${body.privyUserId}`);
     return res.json({ success: true });

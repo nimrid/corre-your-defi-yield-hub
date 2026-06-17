@@ -29,7 +29,17 @@ const Navigation = () => {
 
   const hasEarlyAccess =
     typeof window !== "undefined" &&
-    window.localStorage.getItem(EARLY_ACCESS_STORAGE_KEY) === "true";
+    (window.localStorage.getItem(EARLY_ACCESS_STORAGE_KEY) === "true" ||
+      window.localStorage.getItem("bypassBeta") === "true");
+
+  useEffect(() => {
+    if (ready && !authenticated) {
+      if (localStorage.getItem("autoLogin") === "true") {
+        localStorage.removeItem("autoLogin");
+        login();
+      }
+    }
+  }, [ready, authenticated, login]);
 
   useEffect(() => {
     const fetchReferralData = async () => {
@@ -91,65 +101,11 @@ const Navigation = () => {
                   Join our community
                 </Button>
 
-                <Dialog>
-                  <DialogTrigger asChild>
-                    <Button variant="ghost" className="text-primary hover:text-primary hover:bg-primary/10">
-                      Invite Frens
-                    </Button>
-                  </DialogTrigger>
-                  <DialogContent className="sm:max-w-md">
-                    <DialogHeader>
-                      <DialogTitle className="text-2xl font-bold flex items-center gap-2">
-                        <Users className="w-6 h-6 text-primary" />
-                        Invite Frens
-                      </DialogTitle>
-                    </DialogHeader>
-                    <div className="space-y-6 pt-4">
-                      <p className="text-muted-foreground">
-                        Invite your frens to Corre and grow the ecosystem together.
-                        {referralData && (
-                          <span className="block mt-2 font-medium text-foreground">
-                            You've already invited {referralData.referralsCount} {referralData.referralsCount === 1 ? 'fren' : 'frens'}!
-                          </span>
-                        )}
-                      </p>
-
-                      {referralLoading ? (
-                        <div className="animate-pulse h-12 bg-secondary/30 rounded-lg"></div>
-                      ) : referralData ? (
-                        <div className="space-y-4">
-                          <div className="flex items-center justify-between p-4 rounded-xl bg-secondary/30 font-mono text-lg border border-border/40">
-                            <span className="truncate">{referralData.referralCode}</span>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                const link = `${window.location.origin}/?ref=${referralData.referralCode}`;
-                                navigator.clipboard.writeText(link);
-                              }}
-                              className="p-2 rounded-lg hover:bg-primary/20 text-primary transition-colors"
-                              title="Copy referral link"
-                            >
-                              <Copy className="w-5 h-5" />
-                            </button>
-                          </div>
-                          <Button
-                            className="w-full rounded-full py-6 text-lg font-bold"
-                            onClick={() => {
-                              const link = `${window.location.origin}/?ref=${referralData.referralCode}`;
-                              navigator.clipboard.writeText(link);
-                            }}
-                          >
-                            Copy Referral Link
-                          </Button>
-                        </div>
-                      ) : (
-                        <p className="text-sm text-center text-muted-foreground italic">
-                          Generating your unique code...
-                        </p>
-                      )}
-                    </div>
-                  </DialogContent>
-                </Dialog>
+                <Link to="/referrals">
+                  <Button variant="ghost" className="text-primary hover:text-primary hover:bg-primary/10">
+                    Invite Frens
+                  </Button>
+                </Link>
 
                 <Button onClick={logout} variant="secondary">Logout</Button>
               </>
@@ -202,59 +158,11 @@ const Navigation = () => {
                   Join our community
                 </Button>
 
-                <Dialog>
-                  <DialogTrigger asChild>
-                    <Button variant="ghost" className="w-full text-primary hover:text-primary hover:bg-primary/10">
-                      Invite Frens
-                    </Button>
-                  </DialogTrigger>
-                  <DialogContent className="sm:max-w-md mx-4">
-                    <DialogHeader>
-                      <DialogTitle className="text-2xl font-bold flex items-center gap-2">
-                        <Users className="w-6 h-6 text-primary" />
-                        Invite Frens
-                      </DialogTitle>
-                    </DialogHeader>
-                    <div className="space-y-6 pt-4">
-                      <p className="text-muted-foreground">
-                        Invite your frens to Corre and grow the ecosystem together.
-                      </p>
-
-                      {referralLoading ? (
-                        <div className="animate-pulse h-12 bg-secondary/30 rounded-lg"></div>
-                      ) : referralData ? (
-                        <div className="space-y-4">
-                          <div className="flex items-center justify-between p-4 rounded-xl bg-secondary/30 font-mono text-lg border border-border/40">
-                            <span className="truncate">{referralData.referralCode}</span>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                const link = `${window.location.origin}/?ref=${referralData.referralCode}`;
-                                navigator.clipboard.writeText(link);
-                              }}
-                              className="p-2 rounded-lg hover:bg-primary/20 text-primary transition-colors"
-                            >
-                              <Copy className="w-5 h-5" />
-                            </button>
-                          </div>
-                          <Button
-                            className="w-full rounded-full py-6 text-lg font-bold"
-                            onClick={() => {
-                              const link = `${window.location.origin}/?ref=${referralData.referralCode}`;
-                              navigator.clipboard.writeText(link);
-                            }}
-                          >
-                            Copy Referral Link
-                          </Button>
-                        </div>
-                      ) : (
-                        <p className="text-sm text-center text-muted-foreground italic">
-                          Generating code...
-                        </p>
-                      )}
-                    </div>
-                  </DialogContent>
-                </Dialog>
+                <Link to="/referrals" onClick={() => setIsOpen(false)}>
+                  <Button variant="ghost" className="w-full text-primary hover:text-primary hover:bg-primary/10">
+                    Invite Frens
+                  </Button>
+                </Link>
 
                 <Button onClick={() => { logout(); setIsOpen(false); }} variant="secondary" className="w-full">Logout</Button>
               </div>

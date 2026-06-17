@@ -24,9 +24,27 @@ import BuyUSDCNaira from "./pages/BuyUSDCNaira";
 import Terms from "./pages/Terms";
 import Privacy from "./pages/Privacy";
 import About from "./pages/About";
+import Referrals from "./pages/Referrals";
 import { usePrivy } from "@privy-io/react-auth";
 import { ShieldCheck, WifiOff, RefreshCw } from "lucide-react";
 import { useEffect, useState } from "react";
+import { useNavigate, useParams } from "react-router-dom";
+
+const ReferralRedirect = () => {
+  const { slug } = useParams();
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    if (slug) {
+      localStorage.setItem("referredByCode", slug);
+      localStorage.setItem("autoLogin", "true");
+      localStorage.setItem("bypassBeta", "true");
+    }
+    navigate("/", { replace: true });
+  }, [slug, navigate]);
+
+  return null;
+};
 
 const queryClient = new QueryClient();
 
@@ -136,6 +154,8 @@ const App = () => {
             <Route path="/terms" element={<Terms />} />
             <Route path="/privacy" element={<Privacy />} />
             <Route path="/about" element={<About />} />
+            <Route path="/referrals" element={<Referrals />} />
+            <Route path="/r/:slug" element={<ReferralRedirect />} />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
           </Routes>

@@ -146,6 +146,16 @@ export async function runMigrations(): Promise<void> {
        updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
      )`,
 
+    `CREATE TABLE IF NOT EXISTS referral_actions (
+       id              SERIAL PRIMARY KEY,
+       referrer_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+       referred_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+       action_type     TEXT NOT NULL,
+       points          INTEGER NOT NULL,
+       created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+       UNIQUE(referred_id, action_type)
+     )`,
+
     // ── Column additions (idempotent via ADD COLUMN IF NOT EXISTS) ───────────
     `ALTER TABLE users
        ADD COLUMN IF NOT EXISTS referral_code  TEXT UNIQUE,

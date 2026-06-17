@@ -2,6 +2,7 @@ import type { Request, Response } from "express";
 import { pool } from "../db.js";
 import { resolveUserId } from "../lib/dbHelpers.js";
 import { invalidateCache } from "../lib/responseCache.js";
+import { recordReferralAction, REFERRAL_POINTS } from "../lib/referral.js";
 import type { TransactionInput } from "../models/transaction.js";
 
 /**
@@ -169,6 +170,14 @@ export async function createSavingsActivity(req: Request, res: Response) {
     );
 
     await client.query("COMMIT");
+
+    if (body.direction === "deposit" || body.direction === "incoming") {
+      if (body.vaultType === "protected") {
+        await recordReferralAction(userId, "DEPOSIT_SHIELDED", REFERRAL_POINTS.DEPOSIT_SHIELDED);
+      } else if (body.vaultType === "regular") {
+        await recordReferralAction(userId, "DEPOSIT_STANDARD", REFERRAL_POINTS.DEPOSIT_STANDARD);
+      }
+    }
 
     invalidateCache(`/savings-activity/${body.privyUserId}`);
 

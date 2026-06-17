@@ -1,6 +1,7 @@
 import type { Request, Response } from "express";
 import { pool } from "../db.js";
 import { setUserIdCache } from "../lib/userCache.js";
+import { recordReferralAction, REFERRAL_POINTS } from "../lib/referral.js";
 import type { UserInput, WalletInput } from "../models/user.js";
 
 /**
@@ -129,6 +130,12 @@ export async function upsertUser(req: Request, res: Response) {
     }
 
     await client.query("COMMIT");
+
+    // Award 1 point for SIGNUP if this is a new user and they were referred
+    if (existing.rows.length === 0) {
+      await recordReferralAction(userId, "SIGNUP", REFERRAL_POINTS.SIGNUP);
+    }
+
     return res.json({ success: true, userId });
   } catch (err) {
     await client.query("ROLLBACK").catch(() => {});
@@ -141,7 +148,7 @@ export async function upsertUser(req: Request, res: Response) {
 
 /**
  * GET /users/:privyUserId/referral
- * Runs both queries in parallel.
+ * Returns custom slug, total points, and a list of referred friends with their actions.
  */
 export async function getUserReferral(req: Request, res: Response) {
   const { privyUserId } = req.params;
@@ -158,17 +165,98 @@ export async function getUserReferral(req: Request, res: Response) {
 
     const { id, referral_code } = userResult.rows[0];
 
-    // Fire the count query immediately — no need to wait for userResult first
-    const [referralsCountResult] = await Promise.all([
-      pool.query("SELECT COUNT(*) FROM users WHERE referred_by_id = $1", [id]),
-    ]);
+    // Fetch all referrals for this user, ordered by join date (created_at)
+    const referralsResult = await pool.query(
+      `SELECT id, created_at
+       FROM users
+       WHERE referred_by_id = $1
+       ORDER BY created_at ASC`,
+      [id]
+    );
+
+    const referredUsers = referralsResult.rows;
+    let totalPoints = 0;
+    const frens: any[] = [];
+
+    if (referredUsers.length > 0) {
+      const referredIds = referredUsers.map((u) => u.id);
+      
+      // Fetch all actions for these referred users
+      const actionsResult = await pool.query(
+        `SELECT referred_id, action_type, points
+         FROM referral_actions
+         WHERE referrer_id = $1`,
+        [id]
+      );
+
+      const actionsByReferredId = actionsResult.rows.reduce((acc, row) => {
+        if (!acc[row.referred_id]) acc[row.referred_id] = [];
+        acc[row.referred_id].push({ actionType: row.action_type, points: row.points });
+        totalPoints += row.points;
+        return acc;
+      }, {} as Record<number, { actionType: string; points: number }[]>);
+
+      const toRoman = (num: number) => {
+        const roman = ["I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X"];
+        return roman[num - 1] || num.toString(); // simplistic, enough for display
+      };
+
+      referredUsers.forEach((u, index) => {
+        frens.push({
+          name: `Fren ${toRoman(index + 1)}`,
+          joinDate: u.created_at,
+          actions: actionsByReferredId[u.id] || [],
+        });
+      });
+    }
 
     return res.json({
       referralCode: referral_code,
-      referralsCount: parseInt(referralsCountResult.rows[0].count),
+      totalPoints,
+      frens,
     });
   } catch (err) {
     console.error("Error fetching referral data:", err);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+}
+
+/**
+ * PUT /users/:privyUserId/referral
+ * Update the custom referral slug.
+ */
+export async function updateUserReferralCode(req: Request, res: Response) {
+  const { privyUserId } = req.params;
+  const { referralCode } = req.body;
+
+  if (!referralCode || typeof referralCode !== "string" || referralCode.length < 3) {
+    return res.status(400).json({ error: "Invalid referral code. Must be at least 3 characters." });
+  }
+
+  // Basic slug validation (alphanumeric and dashes)
+  if (!/^[a-zA-Z0-9-]+$/.test(referralCode)) {
+    return res.status(400).json({ error: "Referral code can only contain letters, numbers, and hyphens." });
+  }
+
+  try {
+    // Check if it's already taken
+    const existing = await pool.query("SELECT id FROM users WHERE referral_code = $1", [referralCode]);
+    if (existing.rows.length > 0) {
+      return res.status(409).json({ error: "This referral code is already taken." });
+    }
+
+    const updateResult = await pool.query(
+      "UPDATE users SET referral_code = $1 WHERE privy_user_id = $2 RETURNING id",
+      [referralCode, privyUserId]
+    );
+
+    if (updateResult.rows.length === 0) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    return res.json({ success: true, referralCode });
+  } catch (err) {
+    console.error("Error updating referral code:", err);
     return res.status(500).json({ error: "Internal server error" });
   }
 }

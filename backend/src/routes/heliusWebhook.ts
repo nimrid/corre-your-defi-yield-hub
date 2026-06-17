@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express';
 import crypto from 'crypto';
 import { pool } from '../db.js';
+import { recordReferralAction, REFERRAL_POINTS } from '../lib/referral.js';
 
 const router = Router();
 
@@ -85,6 +86,9 @@ async function updateUserUSDCBalance(
     );
 
     await client.query('COMMIT');
+
+    // Currently helius webhook only handles 'regular' vault deposits
+    await recordReferralAction(userId, "DEPOSIT_STANDARD", REFERRAL_POINTS.DEPOSIT_STANDARD);
 
     console.log(
       `USDC deposit recorded: ${amount} USDC to user ${privyUserId} (wallet: ${walletAddress})`,
