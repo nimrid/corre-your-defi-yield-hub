@@ -51,7 +51,11 @@ const ALLOWED_ORIGINS = [
 app.use(
   cors({
     origin: (origin, callback) => {
-      if (!origin || ALLOWED_ORIGINS.includes(origin)) {
+      if (
+        !origin || 
+        ALLOWED_ORIGINS.includes(origin) || 
+        (origin.startsWith("https://") && origin.endsWith("--defi-corre.netlify.app"))
+      ) {
         callback(null, true);
       } else {
         console.warn(`[CORS] Blocked request from origin: ${origin}`);
