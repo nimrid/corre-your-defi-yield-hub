@@ -10,6 +10,37 @@ import { pool } from "./db.js";
 export async function runMigrations(): Promise<void> {
   const statements: string[] = [
     // ── Core tables ─────────────────────────────────────────────────────────
+    `CREATE TABLE IF NOT EXISTS users (
+       id             SERIAL PRIMARY KEY,
+       privy_user_id  TEXT UNIQUE NOT NULL,
+       email          TEXT,
+       name           TEXT,
+       created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW()
+     )`,
+
+    `CREATE TABLE IF NOT EXISTS wallets (
+       id          SERIAL PRIMARY KEY,
+       user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+       chain_type  TEXT NOT NULL,
+       address     TEXT NOT NULL,
+       is_linked   BOOLEAN NOT NULL DEFAULT FALSE,
+       created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+     )`,
+
+    `CREATE TABLE IF NOT EXISTS transactions (
+       id            SERIAL PRIMARY KEY,
+       user_id       INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+       chain_type    TEXT,
+       asset_symbol  TEXT,
+       amount        TEXT,
+       direction     TEXT,
+       tx_signature  TEXT,
+       from_address  TEXT,
+       to_address    TEXT,
+       source        TEXT,
+       created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+     )`,
+
     `CREATE TABLE IF NOT EXISTS pending_withdrawals (
        id                 SERIAL PRIMARY KEY,
        privy_user_id      TEXT NOT NULL,
@@ -155,6 +186,17 @@ export async function runMigrations(): Promise<void> {
        created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
        UNIQUE(referred_id, action_type)
      )`,
+
+    `CREATE TABLE IF NOT EXISTS private_market_purchases (
+       id                  SERIAL PRIMARY KEY,
+       user_id             INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+       investment_id       TEXT NOT NULL,
+       amount              NUMERIC NOT NULL,
+       receipt_image_url   TEXT NOT NULL,
+       status              TEXT NOT NULL DEFAULT 'PENDING',
+       created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
+     )`,
+
 
     // ── Column additions (idempotent via ADD COLUMN IF NOT EXISTS) ───────────
     `ALTER TABLE users

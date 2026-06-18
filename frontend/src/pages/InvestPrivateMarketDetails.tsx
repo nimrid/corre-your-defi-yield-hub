@@ -1,10 +1,10 @@
 import Navigation from "@/components/Navigation";
-import { ArrowLeft, MapPin, TrendingUp, Calendar, Shield, CheckCircle2 } from "lucide-react";
+import { ArrowLeft, MapPin, TrendingUp, Calendar, Shield, CheckCircle2, UploadCloud } from "lucide-react";
 import { useNavigate, useParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
-import { useState } from "react";
-import { useWallets } from "@privy-io/react-auth/solana";
+import { useState, useEffect } from "react";
+import { usePrivy } from "@privy-io/react-auth";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -13,71 +13,118 @@ const InvestPrivateMarketDetails = () => {
   const navigate = useNavigate();
   const { id } = useParams();
   const { toast } = useToast();
+  const { user } = usePrivy();
 
-  const { wallets } = useWallets();
   const [buyDialogOpen, setBuyDialogOpen] = useState(false);
   const [amount, setAmount] = useState("");
-  const [loading, setLoading] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [uploadingImage, setUploadingImage] = useState(false);
+  const [uploadedImageUrl, setUploadedImageUrl] = useState<string | null>(null);
+
+  const [totalInvested, setTotalInvested] = useState<number>(0);
+  const targetAmount = 50000000; // 50,000,000 NGN
+
+  useEffect(() => {
+    if (id === "nilep-palm-oil") {
+      fetch(`${import.meta.env.VITE_BACKEND_URL || "http://localhost:4000"}/investments/private-market/${id}/stats`)
+        .then(res => res.json())
+        .then(data => {
+          if (typeof data.totalInvested === "number") {
+            setTotalInvested(data.totalInvested);
+          }
+        })
+        .catch(err => console.error("Error fetching stats:", err));
+    }
+  }, [id]);
 
   const currentMonth = new Date().getMonth();
   const currentCycle = Math.floor(currentMonth / 3) + 1;
 
-  const handleBuyIn = async () => {
-    if (Number(amount) < 10) {
-      toast({ title: "Error", description: "Minimum amount is $10", variant: "destructive" });
+  const handleImageUpload = async (file: File) => {
+    if (file.size > 2 * 1024 * 1024) {
+      toast({ title: "Error", description: "File size must be less than 2MB", variant: "destructive" });
       return;
     }
-    const wallet = wallets[0];
-    if (!wallet) {
-      toast({ title: "Error", description: "Please connect your wallet first." });
-      return;
-    }
+    
     try {
-      setLoading(true);
-      const { Connection, PublicKey, Transaction } = await import("@solana/web3.js");
-      const { getAssociatedTokenAddress, createTransferInstruction, createAssociatedTokenAccountInstruction } = await import("@solana/spl-token");
+      setUploadingImage(true);
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("upload_preset", import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET || "Corre_image");
 
-      // The address from .env
-      const destinationAddress = import.meta.env.VITE_WALLET_ADDRESS || "GjG2o2KXikkfEDBz1a8NAtgXrzXuYvK5GAMxnGXvFHzU";
-      const usdcMintAddress = import.meta.env.VITE_TOKEN_MINT || "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
-
-      const connection = new Connection(import.meta.env.VITE_SOLANA_RPC || "https://solana-mainnet.g.alchemy.com/v2/C5-LCLXSwlCEtsquSDPIj", "confirmed");
-      const fromPubkey = new PublicKey(wallet.address);
-      const toPubkey = new PublicKey(destinationAddress);
-      const usdcMint = new PublicKey(usdcMintAddress);
-
-      const fromTokenAccount = await getAssociatedTokenAddress(usdcMint, fromPubkey);
-      const toTokenAccount = await getAssociatedTokenAddress(usdcMint, toPubkey);
-
-      const rawAmount = Math.floor(Number(amount) * 1_000_000);
-
-      const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash("confirmed");
-      const transaction = new Transaction({ recentBlockhash: blockhash, feePayer: fromPubkey });
-
-      const toAccountInfo = await connection.getAccountInfo(toTokenAccount);
-      if (!toAccountInfo) {
-        transaction.add(
-          createAssociatedTokenAccountInstruction(fromPubkey, toTokenAccount, toPubkey, usdcMint)
-        );
-      }
-
-      transaction.add(
-        createTransferInstruction(fromTokenAccount, toTokenAccount, fromPubkey, rawAmount)
+      const response = await fetch(
+        `https://api.cloudinary.com/v1_1/${import.meta.env.VITE_CLOUDINARY_CLOUD_NAME || "Corre"}/image/upload`,
+        {
+          method: "POST",
+          body: formData,
+        }
       );
-
-      const signedTx = await wallet.signTransaction({ transaction: transaction.serialize({ requireAllSignatures: false }) });
-      const signature = await connection.sendRawTransaction(signedTx.signedTransaction);
       
-      await connection.confirmTransaction({ signature, blockhash, lastValidBlockHeight }, "confirmed");
-
-      toast({ title: "Success", description: `Successfully deposited $${amount}.` });
-      setBuyDialogOpen(false);
-      setAmount("");
+      const data = await response.json();
+      
+      if (!response.ok) {
+        throw new Error(data.error?.message || "Failed to upload image");
+      }
+      
+      setUploadedImageUrl(data.secure_url);
+      toast({ title: "Success", description: "Image uploaded successfully." });
     } catch (error: any) {
       console.error(error);
-      toast({ title: "Error", description: error.message || "Transaction failed", variant: "destructive" });
+      toast({ title: "Error", description: error.message, variant: "destructive" });
     } finally {
-      setLoading(false);
+      setUploadingImage(false);
+    }
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files.length > 0) {
+      const file = e.target.files[0];
+      setSelectedFile(file);
+      handleImageUpload(file);
+    }
+  };
+
+  const handleSubmitInvestment = async () => {
+    if (!amount || Number(amount) < 5000) {
+      toast({ title: "Error", description: "Minimum amount is 5000 NGN.", variant: "destructive" });
+      return;
+    }
+    if (!uploadedImageUrl) {
+      toast({ title: "Error", description: "Please upload your receipt first.", variant: "destructive" });
+      return;
+    }
+    if (!user?.id) {
+      toast({ title: "Error", description: "You must be logged in.", variant: "destructive" });
+      return;
+    }
+
+    try {
+      setSubmitting(true);
+      const res = await fetch(`${import.meta.env.VITE_BACKEND_URL || "http://localhost:4000"}/investments/private-market`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          privyUserId: user.id,
+          investmentId: id,
+          amount,
+          receiptImageUrl: uploadedImageUrl
+        })
+      });
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to submit investment");
+
+      toast({ title: "Success", description: "Investment submitted successfully! We will verify and allocate your share." });
+      setAmount("");
+      setUploadedImageUrl(null);
+      setSelectedFile(null);
+    } catch (error: any) {
+      console.error(error);
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -113,7 +160,7 @@ const InvestPrivateMarketDetails = () => {
           <div className="space-y-4 border-b border-border/60 pb-6">
             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-primary/10 text-primary text-xs font-semibold uppercase tracking-wider">
               <TrendingUp className="w-3 h-3" />
-              Agriculture • Private Equity
+              Agriculture • Private Investment
             </div>
             <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold tracking-tight">
               Palm Oil Mill Operations
@@ -130,6 +177,23 @@ const InvestPrivateMarketDetails = () => {
                 Managed by Nilep
               </span>
             </div>
+          </div>
+
+          {/* Milestone Tracker */}
+          <div className="space-y-2">
+            <div className="flex justify-between items-end">
+              <h3 className="font-semibold text-sm">Funding Progress</h3>
+              <span className="text-xs text-muted-foreground">Target: ₦50,000,000</span>
+            </div>
+            <div className="h-3 w-full bg-secondary/50 rounded-full overflow-hidden">
+              <div 
+                className="h-full bg-primary transition-all duration-1000 ease-in-out" 
+                style={{ width: `${Math.min(100, (totalInvested / targetAmount) * 100)}%` }}
+              />
+            </div>
+            <p className="text-xs font-medium text-right text-primary">
+              ₦{totalInvested.toLocaleString()} Raised
+            </p>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
@@ -174,7 +238,7 @@ const InvestPrivateMarketDetails = () => {
                 <div>
                   <div className="text-sm font-medium mb-1">Available Tenors:</div>
                   <div className="text-sm text-muted-foreground">
-                    3 months, 6 months, 9 months, or 12 months.
+                    3 months.
                   </div>
                 </div>
               </div>
@@ -217,19 +281,60 @@ const InvestPrivateMarketDetails = () => {
             >
               Buy In
             </Button>
-            <Button
-              size="lg"
-              variant="outline"
-              className="w-full sm:w-auto rounded-full font-semibold px-8"
-              onClick={() => {
-                 window.open('https://corre.com/docs/nilep-agreement', '_blank');
-                 toast({
-                    description: "Link to full agreement coming soon."
-                 });
-              }}
-            >
-              Read Full Agreement
-            </Button>
+          </div>
+
+          <div className="space-y-3 pt-6 border-t border-border/60">
+            <h3 className="text-lg font-semibold flex items-center gap-2">
+              <UploadCloud className="w-5 h-5 text-primary" />
+              Upload Documentation
+            </h3>
+            <div className="bg-secondary/30 rounded-xl p-5 border border-border/50">
+              <div className="space-y-4">
+                <div className="flex flex-col gap-2">
+                  <Label htmlFor="amount">Amount Sent (NGN) <span className="text-xs text-muted-foreground font-normal ml-1">(Min. 5000)</span></Label>
+                  <Input 
+                    id="amount" 
+                    type="number" 
+                    placeholder="Enter the amount you transferred"
+                    value={amount}
+                    min="5000"
+                    onChange={(e) => setAmount(e.target.value)}
+                  />
+                </div>
+                <div className="flex flex-col gap-2">
+                  <Label htmlFor="document-upload">Image Upload (Max 2MB)</Label>
+                  <Input 
+                    id="document-upload" 
+                    type="file" 
+                    accept="image/*"
+                    onChange={handleFileChange}
+                    disabled={uploadingImage}
+                    className="cursor-pointer file:text-primary file:font-semibold file:bg-primary/10 file:border-0 file:rounded-md file:px-3 file:py-1 file:mr-4 hover:file:bg-primary/20 transition-colors"
+                  />
+                  {uploadingImage && <p className="text-sm text-muted-foreground animate-pulse">Uploading to Cloudinary...</p>}
+                </div>
+                {uploadedImageUrl && (
+                  <div className="mt-4 space-y-3">
+                    <div className="inline-flex items-center gap-2 text-sm font-medium text-green-500 bg-green-500/10 px-3 py-1.5 rounded-md">
+                      <CheckCircle2 className="w-4 h-4" />
+                      Upload Successful!
+                    </div>
+                    <img 
+                      src={uploadedImageUrl} 
+                      alt="Uploaded Document" 
+                      className="w-full max-w-md rounded-xl border border-border/60 shadow-sm"
+                    />
+                    <Button 
+                      className="w-full mt-4" 
+                      onClick={handleSubmitInvestment}
+                      disabled={submitting || !amount}
+                    >
+                      {submitting ? "Submitting..." : "Submit Investment"}
+                    </Button>
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
 
         </div>
@@ -238,32 +343,39 @@ const InvestPrivateMarketDetails = () => {
       <Dialog open={buyDialogOpen} onOpenChange={setBuyDialogOpen}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Buy In</DialogTitle>
+            <DialogTitle>Payment Instructions</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-4">
-            <div className="space-y-2">
-              <Label htmlFor="amount">Deposit Amount (USDC)</Label>
-              <Input
-                id="amount"
-                type="number"
-                placeholder="0.00"
-                value={amount}
-                onChange={(e) => setAmount(e.target.value)}
-                min="10"
-              />
-              <p className="text-xs text-muted-foreground">Minimum deposit is $10 USDC</p>
+            <p className="text-sm text-muted-foreground">
+              Please make a Naira transfer to the following account:
+            </p>
+            <div className="bg-secondary/30 p-4 rounded-xl border border-border/50 space-y-3">
+              <div className="flex justify-between items-center">
+                <span className="text-sm text-muted-foreground">Account Name:</span>
+                <span className="font-semibold text-sm text-right">Edidiong Emmanuel Uwemedimo</span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-sm text-muted-foreground">Minimum Transfer Amount:</span>
+                <span className="font-semibold text-sm text-right">5000 NGN</span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-sm text-muted-foreground">Account Number:</span>
+                <span className="font-semibold text-sm">8168616904</span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-sm text-muted-foreground">Bank:</span>
+                <span className="font-semibold text-sm">Moniepoint MFB</span>
+              </div>
+            </div>
+            <div className="bg-primary/5 p-4 rounded-xl border border-primary/20">
+              <p className="text-sm font-medium text-primary">
+                When done, please upload your transfer receipt using the "Upload Documentation" section on this page. Once confirmed, a share of the investment will be allocated to you and displayed.
+              </p>
             </div>
           </div>
           <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => setBuyDialogOpen(false)}
-              disabled={loading}
-            >
-              Cancel
-            </Button>
-            <Button onClick={handleBuyIn} disabled={loading || !amount}>
-              {loading ? "Processing..." : "Confirm"}
+            <Button onClick={() => setBuyDialogOpen(false)} className="w-full">
+              I Understand
             </Button>
           </DialogFooter>
         </DialogContent>

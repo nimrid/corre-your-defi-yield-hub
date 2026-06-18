@@ -17,8 +17,9 @@ import heliusWebhookRoutes from "./routes/heliusWebhook.js";
 import privyWebhookRoutes from "./routes/privyWebhook.js";
 import pajWebhookRoutes from "./routes/pajWebhook.js";
 import adminRoutes from "./routes/adminRoutes.js";
+import investRoutes from "./routes/investRoutes.js";
 
-// Schema bootstrap
+// ── Schema bootstrap
 import { runMigrations } from "./migrations.js";
 
 // Inngest
@@ -51,11 +52,7 @@ const ALLOWED_ORIGINS = [
 app.use(
   cors({
     origin: (origin, callback) => {
-      if (
-        !origin || 
-        ALLOWED_ORIGINS.includes(origin) || 
-        (origin.startsWith("https://") && origin.endsWith("--defi-corre.netlify.app"))
-      ) {
+      if (!origin || ALLOWED_ORIGINS.includes(origin)) {
         callback(null, true);
       } else {
         console.warn(`[CORS] Blocked request from origin: ${origin}`);
@@ -107,6 +104,7 @@ app.use("/gas-sponsorship", gasSponsorshipRoutes);
 app.use("/paj-session", pajSessionRoutes);
 app.use("/ai", aiRoutes);
 app.use("/admin", adminRoutes);
+app.use("/investments", investRoutes);
 
 // ── Third-party integration routes ───────────────────────────────────────────
 app.use("/fonbnk/africa", africaRoutes);
