@@ -256,7 +256,7 @@ const InvestPrivateMarketDetails = () => {
                 </div>
                 <div className="grid grid-cols-2 gap-4 text-sm">
                   <div>
-                    <div className="text-xs text-muted-foreground">Expected Profit</div>
+                    <div className="text-xs text-muted-foreground">Expected Profit ({roiRate * 100}%)</div>
                     <div className="font-semibold text-emerald-500">+₦{expectedProfit.toLocaleString()}</div>
                   </div>
                   <div>

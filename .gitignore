@@ -31,3 +31,8 @@ GAS_SPONSORSHIP_SECURITY.md
 PRIVY_WEBHOOK_SETUP.md
 HELIUS_WEBHOOK_SETUP.md
 USDC_DEPOSIT_DISPLAY.md
+
+# Ignored backend scripts
+backend/*.cjs
+backend/src/test_save.ts
+backend/src/test-yield-email.ts
