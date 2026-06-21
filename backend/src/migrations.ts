@@ -194,6 +194,7 @@ export async function runMigrations(): Promise<void> {
        amount              NUMERIC NOT NULL,
        receipt_image_url   TEXT NOT NULL,
        status              TEXT NOT NULL DEFAULT 'PENDING',
+       expected_shares     NUMERIC,
        created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
      )`,
 
@@ -202,6 +203,9 @@ export async function runMigrations(): Promise<void> {
     `ALTER TABLE users
        ADD COLUMN IF NOT EXISTS referral_code  TEXT UNIQUE,
        ADD COLUMN IF NOT EXISTS referred_by_id INTEGER REFERENCES users(id)`,
+
+    `ALTER TABLE private_market_purchases
+       ADD COLUMN IF NOT EXISTS expected_shares NUMERIC`,
 
     // ── Indexes ──────────────────────────────────────────────────────────────
     `CREATE INDEX IF NOT EXISTS idx_users_privy_id

@@ -32,10 +32,10 @@ async function updateHoldingsSummary(
 ): Promise<void> {
   await client.query(
     `INSERT INTO stock_holdings_summary (user_id, stock_mint, shares)
-     VALUES ($1, $2, GREATEST($3, 0))
+     VALUES ($1, $2, GREATEST($3::numeric, 0::numeric))
      ON CONFLICT (user_id, stock_mint)
      DO UPDATE SET
-       shares     = GREATEST(stock_holdings_summary.shares + EXCLUDED.shares, 0),
+       shares     = GREATEST(stock_holdings_summary.shares + EXCLUDED.shares, 0::numeric),
        updated_at = NOW()`,
     [userId, stockMint, sharesDelta]
   );

@@ -15,65 +15,24 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { apiFetch } from "@/services/apiClient";
+import { fetchTokensAsset } from "@/services/tokensService";
 import { getAllTransactions } from "paj_ramp";
 import type { PajTransaction } from "paj_ramp";
 import { usePajSession } from "@/hooks/usePajSession";
 
-interface TransactionRow {
-  id: number;
-  chainType: string;
-  assetSymbol: string;
-  amount: string;
-  direction: "incoming" | "outgoing";
-  txSignature?: string | null;
-  fromAddress: string;
-  toAddress: string;
-  source?: string | null;
-  createdAt: string;
-}
-
-interface StockHistoryRow {
-  id: number;
-  stockMint: string;
-  stockSymbol: string | null;
-  stockName: string | null;
-  usdcAmount: string;
-  sharesAmount: string | null;
-  walletAddress: string | null;
-  txSignature: string | null;
-  jupiterRequestId: string | null;
-  source: string | null;
-  createdAt: string;
-  side: "buy" | "sell";
-}
+import { TotalBalance } from "@/components/dashboard/BalanceComponents";
+import { WalletRow, LinkedWalletRow } from "@/components/dashboard/WalletComponents";
+import { TransactionHistory, TransactionRow, StockHistoryRow, SavingsActivityRow } from "@/components/dashboard/TransactionHistory";
 
 interface StockHolding {
   mint: string;
   name: string;
   symbol: string;
   amount: number;
+  usdValue?: number;
 }
 
-interface SavingsActivityRow {
-  id: number;
-  vaultType: "regular" | "protected";
-  direction: "deposit" | "withdrawal";
-  amount: string;
-  walletAddress: string | null;
-  txSignature: string | null;
-  source: string | null;
-  createdAt: string;
-}
 
-const formatVaultLabel = (value: string): string => {
-  if (value === "lulo_vault_regular") {
-    return "Standard savings vault";
-  }
-  if (value === "lulo_vault_protected") {
-    return "Shielded savings vault";
-  }
-  return value;
-};
 
 const Home = () => {
   const { ready, authenticated, user } = usePrivy();
@@ -87,6 +46,7 @@ const Home = () => {
   const [savingsLoading, setSavingsLoading] = useState(false);
   const [savingsError, setSavingsError] = useState<string | null>(null);
   const [stockHistory, setStockHistory] = useState<StockHistoryRow[]>([]);
+  const [privateMarketHistory, setPrivateMarketHistory] = useState<any[]>([]);
   const [stockHistoryLoading, setStockHistoryLoading] = useState(false);
   const [stockHistoryError, setStockHistoryError] = useState<string | null>(null);
   const [stocksOpen, setStocksOpen] = useState(false);
@@ -253,6 +213,26 @@ const Home = () => {
           .filter((h) => h.amount > 0)
           .sort((a, b) => b.amount - a.amount);
 
+        // Fetch prices to estimate USDC value
+        if (holdings.length > 0) {
+          try {
+            await Promise.all(
+              holdings.map(async (holding) => {
+                try {
+                  const asset = await fetchTokensAsset(holding.mint);
+                  if (asset.price != null) {
+                    holding.usdValue = holding.amount * asset.price;
+                  }
+                } catch (e) {
+                  console.warn(`Failed to fetch price for ${holding.symbol}`, e);
+                }
+              })
+            );
+          } catch (e) {
+            console.error("Error fetching holding prices", e);
+          }
+        }
+
         setStockBalances(holdings);
       } catch (err: any) {
         setStocksError(err?.message ?? "Failed to load stocks portfolio");
@@ -354,10 +334,24 @@ const Home = () => {
       }
     };
 
+    const fetchPrivateMarketHistory = async () => {
+      if (!user?.id) return;
+      try {
+        const res = await apiFetch(`/investments/private-market/history/${user.id}`);
+        if (res.ok) {
+          const data = await res.json();
+          setPrivateMarketHistory(Array.isArray(data) ? data : []);
+        }
+      } catch (err) {
+        console.error("Failed to fetch private market history", err);
+      }
+    };
+
     if (ready && authenticated && user) {
       void fetchTransactions();
       void fetchSavingsActivity();
       void fetchStockHistory();
+      void fetchPrivateMarketHistory();
     }
   }, [ready, authenticated, user, primarySolanaAddress]);
 
@@ -540,11 +534,18 @@ const Home = () => {
                                     {holding.symbol}
                                   </span>
                                 </div>
-                                <span className="font-mono">
-                                  {holding.amount.toLocaleString(undefined, {
-                                    maximumFractionDigits: 4,
-                                  })}
-                                </span>
+                                <div className="flex flex-col text-right">
+                                  <span className="font-mono">
+                                    {holding.amount.toLocaleString(undefined, {
+                                      maximumFractionDigits: 4,
+                                    })}
+                                  </span>
+                                  {holding.usdValue != null && (
+                                    <span className="text-xs text-muted-foreground mt-0.5">
+                                      ≈ ${holding.usdValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USDC
+                                    </span>
+                                  )}
+                                </div>
                               </li>
                             ))}
                             {stockBalances.length > 5 && (
@@ -570,148 +571,20 @@ const Home = () => {
                   )}
                 </div>
               )}
-            </div>
-
-            {/* Transaction History */}
-            <div className="glass-card p-6 order-4">
-              <h2 className="text-2xl font-semibold mb-4">Transaction History</h2>
-              {txLoading || savingsLoading || fiatLoading ? (
-                <div className="text-center py-8 text-muted-foreground">
-                  <p>Loading transactions...</p>
-                </div>
-              ) : txError || savingsError || fiatError ? (
-                <div className="text-center py-8 text-red-500 text-sm">
-                  <p>{txError || savingsError || fiatError}</p>
-                </div>
-              ) : !transactions.length && !savingsActivity.length && !stockHistory.length && !fiatTransactions.length ? (
-                <div className="text-center py-8 text-muted-foreground">
-                  <p>No transactions yet.</p>
-                </div>
-              ) : (
-                <div className="space-y-3 max-h-80 overflow-y-auto">
-                  {/* Combine and sort transactions and savings activity by date */}
-                  {[
-                    ...transactions.map((tx) => ({
-                      ...tx,
-                      type: "transfer" as const,
-                      sortDate: new Date(tx.createdAt).getTime(),
-                    })),
-                    ...savingsActivity.map((sa) => ({
-                      ...sa,
-                      type: "savings" as const,
-                      sortDate: new Date(sa.createdAt).getTime(),
-                    })),
-                    ...stockHistory.map((sh) => ({
-                      ...sh,
-                      type: "stock" as const,
-                      sortDate: new Date(sh.createdAt).getTime(),
-                    })),
-                    ...fiatTransactions.map((ft) => ({
-                      ...ft,
-                      type: "fiat" as const,
-                      sortDate: new Date(ft.createdAt || Date.now()).getTime(),
-                    })),
-                  ]
-                    .sort((a, b) => b.sortDate - a.sortDate)
-                    .map((item, idx) => {
-                      const itemDate = new Date((item as any).createdAt || Date.now()).toLocaleString(undefined, {
-                        dateStyle: "medium",
-                        timeStyle: "short",
-                      });
-
-                      if (item.type === "transfer") {
-                        const tx = item as TransactionRow;
-                        return (
-                          <div key={`tx-${tx.id}-${idx}`} className="flex flex-col sm:flex-row sm:items-center sm:justify-between p-4 rounded-xl bg-secondary/30 text-sm border border-border/40 hover:border-primary/30 transition-all duration-200">
-                            <div className="space-y-1">
-                              <div className="flex items-center gap-2">
-                                <span className={tx.direction === "incoming" ? "text-emerald-500 font-bold" : "text-red-500 font-bold"}>
-                                  {tx.direction === "incoming" ? "Received" : "Sent"}
-                                </span>
-                                <span className="font-mono text-base font-medium">{tx.amount} {tx.assetSymbol}</span>
-                              </div>
-                              <div className="text-xs text-muted-foreground opacity-80">
-                                <div><span className="font-medium text-foreground/70">From:</span> {formatVaultLabel(tx.fromAddress)}</div>
-                                <div><span className="font-medium text-foreground/70">To:</span> {formatVaultLabel(tx.toAddress)}</div>
-                              </div>
-                            </div>
-                            <div className="mt-2 sm:mt-0 sm:text-right text-xs text-muted-foreground space-y-1">
-                              <div className="font-semibold text-foreground/90">{itemDate}</div>
-                              <div className="uppercase tracking-widest text-[10px] font-bold opacity-60">{tx.source === "offramp" ? "Bank Transfer" : tx.source === "onchain" ? "On-chain Transfer" : `${tx.chainType} Transfer`}</div>
-                            </div>
-                          </div>
-                        );
-                      } else if (item.type === "savings") {
-                        const sa = item as SavingsActivityRow;
-                        return (
-                          <div key={`sa-${sa.id}-${idx}`} className="flex flex-col sm:flex-row sm:items-center sm:justify-between p-4 rounded-xl bg-blue-500/5 text-sm border border-blue-500/20 hover:border-blue-500/40 transition-all duration-200">
-                            <div className="space-y-1">
-                              <div className="flex items-center gap-2">
-                                <span className={sa.direction === "deposit" ? "text-blue-500 font-bold" : "text-orange-500 font-bold"}>
-                                  {sa.direction === "deposit" ? "Savings Deposit" : "Savings Withdrawal"}
-                                </span>
-                                <span className="font-mono text-base font-medium">{sa.amount} USDC</span>
-                              </div>
-                              <div className="text-xs text-muted-foreground opacity-80">
-                                <span className="font-medium text-foreground/70">Vault:</span> {sa.vaultType === "regular" ? "Standard Yield" : "Shielded Yield"}
-                              </div>
-                            </div>
-                            <div className="mt-2 sm:mt-0 sm:text-right text-xs text-muted-foreground space-y-1">
-                              <div className="font-semibold text-foreground/90">{itemDate}</div>
-                            </div>
-                          </div>
-                        );
-                      } else if (item.type === "fiat") {
-                        const ft = item as PajTransaction;
-                        const isBuy = ft.transactionType === "ON_RAMP";
-                        return (
-                          <div key={`ft-${ft.id}-${idx}`} className="flex flex-col sm:flex-row sm:items-center sm:justify-between p-4 rounded-xl bg-orange-500/5 text-sm border border-orange-500/20 hover:border-orange-500/40 transition-all duration-200">
-                            <div className="space-y-1">
-                              <div className="flex items-center gap-2">
-                                <span className={isBuy ? "text-emerald-500 font-bold" : "text-orange-500 font-bold"}>
-                                  {isBuy ? "Bought USDC (Fiat)" : "Sold USDC (Fiat)"}
-                                </span>
-                                <span className="font-mono text-base font-medium">{ft.usdcAmount ?? ft.amount} USDC</span>
-                              </div>
-                              <div className="text-xs text-muted-foreground opacity-80">
-                                <div><span className="font-medium text-foreground/70">Fiat Amount:</span> ₦{(ft.fiatAmount ?? ft.amount)?.toLocaleString()}</div>
-                                <div><span className="font-medium text-foreground/70">Status:</span> {ft.status}</div>
-                              </div>
-                            </div>
-                            <div className="mt-2 sm:mt-0 sm:text-right text-xs text-muted-foreground space-y-1">
-                              <div className="font-semibold text-foreground/90">{itemDate}</div>
-                              <div className="uppercase tracking-widest text-[10px] font-bold opacity-60">Fiat {isBuy ? "Deposit" : "Withdrawal"}</div>
-                            </div>
-                          </div>
-                        );
-                      } else {
-                        const sh = item as StockHistoryRow;
-                        return (
-                          <div key={`sh-${sh.id}-${idx}`} className="flex flex-col sm:flex-row sm:items-center sm:justify-between p-4 rounded-xl bg-purple-500/5 text-sm border border-purple-500/20 hover:border-purple-500/40 transition-all duration-200">
-                            <div className="space-y-1">
-                              <div className="flex items-center gap-2">
-                                <span className={sh.side === "buy" ? "text-purple-500 font-bold" : "text-rose-500 font-bold"}>
-                                  {sh.side === "buy" ? "Bought" : "Sold"} {sh.stockSymbol}
-                                </span>
-                                <span className="font-mono text-base font-medium">{sh.usdcAmount} USDC</span>
-                              </div>
-                              <div className="text-xs text-muted-foreground opacity-80">
-                                <div><span className="font-medium text-foreground/70">Asset:</span> {sh.stockName}</div>
-                                {sh.sharesAmount && <div><span className="font-medium text-foreground/70">Shares:</span> {sh.sharesAmount}</div>}
-                              </div>
-                            </div>
-                            <div className="mt-2 sm:mt-0 sm:text-right text-xs text-muted-foreground space-y-1">
-                              <div className="font-semibold text-foreground/90">{itemDate}</div>
-                            </div>
-                          </div>
-                        );
-                      }
-                    })}
-                </div>
-              )}
-
-
-            </div>
+            </div>            {/* Transaction History */}
+            <TransactionHistory 
+              transactions={transactions}
+              savingsActivity={savingsActivity}
+              stockHistory={stockHistory}
+              fiatTransactions={fiatTransactions}
+              privateMarketHistory={privateMarketHistory}
+              txLoading={txLoading}
+              savingsLoading={savingsLoading}
+              fiatLoading={fiatLoading}
+              txError={txError}
+              savingsError={savingsError}
+              fiatError={fiatError}
+            />
           </div>
         </div>
       </main>
@@ -751,337 +624,4 @@ const Home = () => {
   );
 };
 
-const Balance = ({ wallet, address }: { wallet: any, address?: string }) => {
-  const { user } = usePrivy();
-  const [balance, setBalance] = useState<string>("-");
-
-  useEffect(() => {
-    const fetchBalance = async () => {
-      try {
-        // For Solana wallets, fetch USDC SPL token balance directly via RPC.
-        if (
-          wallet.chainType === "solana" ||
-          (wallet as any).walletClientType === "solana" ||
-          (wallet as any).chain === "solana"
-        ) {
-          if (!address) {
-            setBalance("-");
-            return;
-          }
-
-          const { Connection, PublicKey } = await import("@solana/web3.js");
-          const connection = new Connection("https://solana-mainnet.g.alchemy.com/v2/C5-LCLXSwlCEtsquSDPIj", "confirmed");
-          const owner = new PublicKey(address);
-          const USDC_MINT = new PublicKey("EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"); // Solana USDC
-          const resp = await connection.getParsedTokenAccountsByOwner(owner, { mint: USDC_MINT });
-          console.log("[DEBUG] Solana USDC RPC response for", address.toString(), ":", resp);
-          const ui = resp.value.reduce((sum, acc: any) => {
-            const amt =
-              acc?.account?.data?.parsed?.info?.tokenAmount?.uiAmount ?? 0;
-            return sum + Number(amt || 0);
-          }, 0);
-          setBalance(
-            `${Number(ui).toLocaleString(undefined, {
-              maximumFractionDigits: 4,
-            })} USDC`,
-          );
-          return;
-        }
-
-        // For non-Solana wallets, use Privy's wallet balance API via wallet_id.
-        if (!user) {
-          setBalance("-");
-          return;
-        }
-
-        const linkedWallets = (user.linkedAccounts ?? []).filter(
-          (a: any) => a.type === "wallet" || a.type === "smart_wallet",
-        );
-
-        const matching = linkedWallets.find((a: any) => {
-          const accountAddress = (a.address ?? a.walletAddress) as string | undefined;
-          return (
-            accountAddress &&
-            accountAddress.toLowerCase() === (address ?? "").toLowerCase()
-          );
-        });
-
-        const walletId = (matching as any)?.walletId ?? (matching as any)?.wallet_id;
-
-        if (!walletId) {
-          setBalance("-");
-          return;
-        }
-
-        const res = await fetch(
-          `https://api.privy.io/v1/wallets/${walletId}/balance`,
-          {
-            method: "GET",
-            headers: {
-              // NOTE: For production, you should proxy this through your backend instead of calling Privy directly from the client.
-              "Content-Type": "application/json",
-            },
-          },
-        );
-
-        if (!res.ok) {
-          setBalance("-");
-          return;
-        }
-
-        const data: any = await res.json();
-
-        if (!Array.isArray(data.balances) || !data.balances.length) {
-          setBalance("0");
-          return;
-        }
-
-        const primary = data.balances[0];
-        const symbol = primary.asset?.toUpperCase?.() ?? primary.asset ?? "";
-        const raw = primary.raw_value ?? "0";
-        const decimals =
-          typeof primary.decimals === "number" ? primary.decimals : 18;
-
-        const asNumber = Number(raw) / 10 ** decimals;
-        setBalance(
-          `${asNumber.toLocaleString(undefined, {
-            maximumFractionDigits: 4,
-          })} ${symbol}`,
-        );
-      } catch {
-        setBalance("-");
-      }
-    };
-
-    fetchBalance();
-  }, [user, wallet, address]);
-
-  return <p className="text-lg font-bold">{balance}</p>;
-};
-
-const TotalBalance = ({ wallets }: { wallets: any[] }) => {
-  const [total, setTotal] = useState<string>("-");
-
-  useEffect(() => {
-    const fetchTotal = async () => {
-      try {
-        if (!wallets.length) {
-          setTotal("-");
-          return;
-        }
-
-        let sum = 0;
-
-        for (const wallet of wallets) {
-          const address = (wallet as any).address as string | undefined;
-          if (!address) continue;
-
-          if (
-            wallet.chainType === 'solana' ||
-            (wallet as any).walletClientType === 'solana' ||
-            (wallet as any).chain === 'solana'
-          ) {
-            const { Connection, PublicKey } = await import('@solana/web3.js');
-            const connection = new Connection("https://solana-mainnet.g.alchemy.com/v2/C5-LCLXSwlCEtsquSDPIj", 'confirmed');
-            const owner = new PublicKey(address);
-            const USDC_MINT = new PublicKey('EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v');
-            const resp = await connection.getParsedTokenAccountsByOwner(owner, { mint: USDC_MINT });
-            const ui = resp.value.reduce((innerSum, acc: any) => {
-              const amt = acc?.account?.data?.parsed?.info?.tokenAmount?.uiAmount ?? 0;
-              return innerSum + Number(amt || 0);
-            }, 0);
-            sum += ui || 0;
-          } else if (wallet.chainType === 'ethereum') {
-            const { ethers } = await import('ethers');
-            const provider = new ethers.JsonRpcProvider((wallet as any).rpcUrl ?? undefined);
-            const chainId: number | undefined = wallet.chainId;
-            const USDC_BY_CHAIN: Record<number, string> = {
-              8453: '0x833589fCD6edb6E08f4c7C32D4f71b54bDA02913',
-            };
-            const usdcAddress = chainId ? USDC_BY_CHAIN[chainId] : undefined;
-            if (!usdcAddress) continue;
-            const abi = [
-              'function balanceOf(address) view returns (uint256)',
-              'function decimals() view returns (uint8)'
-            ];
-            const usdc = new ethers.Contract(usdcAddress, abi, provider);
-            const [raw, decimals] = await Promise.all([
-              usdc.balanceOf(address),
-              usdc.decimals(),
-            ]);
-            const formatted = ethers.formatUnits(raw, decimals);
-            sum += Number(formatted) || 0;
-          }
-        }
-
-        setTotal(`${sum.toLocaleString(undefined, { maximumFractionDigits: 4 })} USDC`);
-      } catch {
-        setTotal("-");
-      }
-    };
-
-    fetchTotal();
-  }, [wallets]);
-
-  const navigate = useNavigate();
-
-  return (
-    <div className="flex items-center gap-3">
-      <p className="text-5xl font-black tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-foreground via-foreground to-foreground/50">{total}</p>
-    </div>
-  );
-};
-
 export default Home;
-
-const WalletQRDialog = ({ address, label }: { address: string; label: string }) => {
-  return (
-    <Dialog>
-      <DialogTrigger asChild>
-        <button
-          type="button"
-          className="p-1 rounded hover:bg-secondary focus:outline-none focus:ring-2 focus:ring-primary"
-          title="Show QR Code"
-        >
-          <QrCode className="w-4 h-4" />
-        </button>
-      </DialogTrigger>
-      <DialogContent className="sm:max-w-md flex flex-col items-center">
-        <DialogHeader className="w-full">
-          <DialogTitle className="text-center">{label} QR Code</DialogTitle>
-        </DialogHeader>
-        <div className="bg-white p-4 rounded-xl mt-4">
-          <QRCodeSVG value={address} size={256} level="H" />
-        </div>
-        <p className="mt-4 font-mono text-xs text-center break-all text-muted-foreground max-w-xs">
-          {address}
-        </p>
-        <Button
-          className="mt-4 w-full"
-          onClick={() => navigator.clipboard.writeText(address)}
-        >
-          Copy Address
-        </Button>
-      </DialogContent>
-    </Dialog>
-  );
-};
-
-const WalletRow = ({ wallet }: { wallet: any }) => {
-  const { toast } = useToast();
-  const [resolvedAddress, setResolvedAddress] = useState<string | undefined>(wallet.address);
-
-  useEffect(() => {
-    let mounted = true;
-    const resolve = async () => {
-      try {
-        if (typeof wallet.getAddress === 'function') {
-          const addr = await wallet.getAddress();
-          if (mounted && addr) {
-            setResolvedAddress(addr);
-            return;
-          }
-        }
-      } catch { }
-      try {
-        if (mounted && wallet.address) setResolvedAddress(wallet.address);
-      } catch { }
-    };
-    resolve();
-    return () => { mounted = false; };
-  }, [wallet]);
-
-  const truncateAddress = (addr: string) => {
-    if (!addr) return "";
-    return `${addr.slice(0, 6)}...${addr.slice(-4)}`;
-  };
-
-  const handleCopy = (addr: string) => {
-    navigator.clipboard.writeText(addr).then(() => {
-      toast({
-        title: "Copied!",
-        description: "Address copied to clipboard",
-        duration: 2000,
-      });
-    }).catch(() => { });
-  };
-
-  return (
-    <div className="flex justify-between items-center p-5 rounded-2xl bg-background/40 hover:bg-background/60 border border-primary/5 hover:border-primary/20 transition-all duration-200 group shadow-sm">
-      <div className="flex-1">
-        <p className="text-[10px] font-bold uppercase tracking-widest text-primary mb-1 opacity-70 group-hover:opacity-100 transition-opacity">
-          {wallet.walletClientType} · Solana
-        </p>
-        <div className="flex items-center gap-2">
-          <p className="font-mono text-sm font-medium truncate max-w-[200px]">
-            {resolvedAddress ? truncateAddress(resolvedAddress) : 'Resolving...'}
-          </p>
-          {resolvedAddress && (
-            <div className="flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
-              <button
-                type="button"
-                onClick={() => handleCopy(resolvedAddress)}
-                className="p-1.5 rounded-lg hover:bg-secondary text-muted-foreground hover:text-primary transition-all focus:outline-none"
-                title="Copy Address"
-              >
-                <Copy className="w-3.5 h-3.5" />
-              </button>
-              <WalletQRDialog address={resolvedAddress} label={wallet.walletClientType} />
-            </div>
-          )}
-        </div>
-      </div>
-      <div className="text-right text-primary">
-        <Balance wallet={wallet} address={resolvedAddress} />
-      </div>
-    </div>
-  );
-};
-
-const LinkedWalletRow = ({ account }: { account: any }) => {
-  const { toast } = useToast();
-  const address = account.address as string | undefined;
-
-  const truncateAddress = (addr: string) => {
-    if (!addr) return "";
-    return `${addr.slice(0, 6)}...${addr.slice(-4)}`;
-  };
-
-  const handleCopy = (addr: string) => {
-    navigator.clipboard.writeText(addr).then(() => {
-      toast({
-        title: "Copied!",
-        description: "Address copied to clipboard",
-        duration: 2000,
-      });
-    }).catch(() => { });
-  };
-
-  return (
-    <div className="flex justify-between items-center p-5 rounded-2xl bg-background/40 hover:bg-background/60 border border-border/40 hover:border-primary/20 transition-all duration-200 group shadow-sm">
-      <div className="flex-1">
-        <p className="text-[10px] font-bold uppercase tracking-widest text-primary mb-1 opacity-70 group-hover:opacity-100 transition-opacity">
-          Linked · {account.chainType ?? account.chain ?? "Solana"}
-        </p>
-        <div className="flex items-center gap-2">
-          <p className="font-mono text-sm font-medium">
-            {address ? truncateAddress(address) : "Unknown address"}
-          </p>
-          {address && (
-            <div className="flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
-              <button
-                type="button"
-                onClick={() => handleCopy(address)}
-                className="p-1.5 rounded-lg hover:bg-secondary text-muted-foreground hover:text-primary transition-all focus:outline-none"
-                title="Copy Address"
-              >
-                <Copy className="w-3.5 h-3.5" />
-              </button>
-              <WalletQRDialog address={address} label="Linked Wallet" />
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-};

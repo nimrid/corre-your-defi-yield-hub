@@ -122,7 +122,14 @@ const InvestStockDetails = () => {
                     {sharesLoading
                       ? "Checking..."
                       : userShares != null && Number(userShares) > 0
-                      ? `${Number(userShares).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 6 })} shares`
+                      ? (
+                          <div className="flex flex-col">
+                            <span>{Number(userShares).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 6 })} shares</span>
+                            <span className="text-muted-foreground text-xs font-normal mt-0.5">
+                              ≈ ${(Number(userShares) * (tokensAsset?.price ?? latestChartPrice ?? token.usdPrice ?? 0)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USDC
+                            </span>
+                          </div>
+                        )
                       : "No shares detected"}
                   </span>
                 </div>

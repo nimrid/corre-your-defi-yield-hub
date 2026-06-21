@@ -54,7 +54,7 @@ export const US_STOCK_TOKENS: USStockTokenConfig[] = [
 
   { mint: "jzCvs2Pk8tDcfsFRqnEMjurgaQW4iQfEkandUR8ondo", name: "Spotify", symbol: "SPOTon" },
   { mint: "PresTj4Yc2bAR197Er7wz4UUKSfqt6FryBEdAriBoQB", name: "Anduril PreStocks", symbol: "Anduril" },
-  { mint: "7C56WnJ94iEP7YeH2iKiYpvsS5zkcpP9rJBBEBoUGdzj", name: "Silver rStock", symbol: "Silver" },
+  { mint: "XsoBhf2ufR8fTyNSjqfU71DYGaE6Z3SUGAidpzriAA4", name: "Palantir xStock", symbol: "PLTRx" },
 
   { mint: "ivdDracs2s7jCP698dJXKSEQdVrNj9hasJL1Uq1ondo", name: "Shopify", symbol: "SHOPon" },
   { mint: "KUXt7LzHWSQXp5eyqMZRxWjAP6yM8BUh4LRHwiwondo", name: "Johnson & Johnson", symbol: "JNJon" },

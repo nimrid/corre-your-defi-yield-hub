@@ -19,10 +19,17 @@ const InvestPrivateMarketDetails = () => {
   const [amount, setAmount] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
+  const [calcAmount, setCalcAmount] = useState("5000");
+  const calcAmountNum = Number(calcAmount) || 0;
+  const roiRate = calcAmountNum >= 1500000 ? 0.15 : 0.10;
+  const expectedProfit = calcAmountNum * roiRate;
+  const expectedTotal = calcAmountNum + expectedProfit;
+
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [uploadingImage, setUploadingImage] = useState(false);
   const [uploadedImageUrl, setUploadedImageUrl] = useState<string | null>(null);
 
+  const [history, setHistory] = useState<any[]>([]);
   const [totalInvested, setTotalInvested] = useState<number>(0);
   const targetAmount = 50000000; // 50,000,000 NGN
 
@@ -38,6 +45,19 @@ const InvestPrivateMarketDetails = () => {
         .catch(err => console.error("Error fetching stats:", err));
     }
   }, [id]);
+
+  useEffect(() => {
+    if (user?.id) {
+      fetch(`${import.meta.env.VITE_BACKEND_URL || "http://localhost:4000"}/investments/private-market/history/${user.id}`)
+        .then(res => res.json())
+        .then(data => {
+          if (Array.isArray(data)) {
+            setHistory(data.filter((item: any) => item.investmentId === id));
+          }
+        })
+        .catch(err => console.error("Error fetching history:", err));
+    }
+  }, [user?.id, id, submitting]);
 
   const currentMonth = new Date().getMonth();
   const currentCycle = Math.floor(currentMonth / 3) + 1;
@@ -197,26 +217,54 @@ const InvestPrivateMarketDetails = () => {
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-            {/* ROI Structure */}
-            <div className="space-y-3">
-              <h3 className="text-lg font-semibold flex items-center gap-2">
-                <TrendingUp className="w-5 h-5 text-primary" />
-                ROI Structure
-              </h3>
-              <ul className="space-y-3">
-                <li className="bg-secondary/30 rounded-xl p-4 border border-border/50">
-                  <div className="font-medium">Tier 1: 10% Fixed ROI</div>
-                  <div className="text-sm text-muted-foreground mt-1">
-                    For capital injections below ₦1,500,000
+            {/* ROI Structure & Calculator */}
+            <div className="space-y-6">
+              <div className="space-y-3">
+                <h3 className="text-lg font-semibold flex items-center gap-2">
+                  <TrendingUp className="w-5 h-5 text-primary" />
+                  ROI Structure
+                </h3>
+                <ul className="space-y-3">
+                  <li className="bg-secondary/30 rounded-xl p-4 border border-border/50">
+                    <div className="font-medium">Tier 1: 10% Fixed ROI</div>
+                    <div className="text-sm text-muted-foreground mt-1">
+                      For capital injections below ₦1,500,000
+                    </div>
+                  </li>
+                  <li className="bg-secondary/30 rounded-xl p-4 border border-border/50">
+                    <div className="font-medium">Tier 2: 15% Fixed ROI</div>
+                    <div className="text-sm text-muted-foreground mt-1">
+                      For capital injections of ₦1,500,000 and above
+                    </div>
+                  </li>
+                </ul>
+              </div>
+
+              {/* ROI Calculator */}
+              <div className="bg-primary/5 rounded-xl p-5 border border-primary/20 space-y-4">
+                <h4 className="font-semibold text-sm">Quick ROI Calculator (3 Months)</h4>
+                <div className="space-y-2">
+                  <Label htmlFor="calcAmount" className="text-xs text-muted-foreground">Investment Amount (₦)</Label>
+                  <Input 
+                    id="calcAmount" 
+                    type="number" 
+                    value={calcAmount} 
+                    onChange={(e) => setCalcAmount(e.target.value)} 
+                    min="5000"
+                    className="bg-background"
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-4 text-sm">
+                  <div>
+                    <div className="text-xs text-muted-foreground">Expected Profit</div>
+                    <div className="font-semibold text-emerald-500">+₦{expectedProfit.toLocaleString()}</div>
                   </div>
-                </li>
-                <li className="bg-secondary/30 rounded-xl p-4 border border-border/50">
-                  <div className="font-medium">Tier 2: 15% Fixed ROI</div>
-                  <div className="text-sm text-muted-foreground mt-1">
-                    For capital injections of ₦1,500,000 and above
+                  <div>
+                    <div className="text-xs text-muted-foreground">Total Return</div>
+                    <div className="font-semibold text-primary">₦{expectedTotal.toLocaleString()}</div>
                   </div>
-                </li>
-              </ul>
+                </div>
+              </div>
             </div>
 
             {/* Cycles and Tenors */}
@@ -302,7 +350,7 @@ const InvestPrivateMarketDetails = () => {
                   />
                 </div>
                 <div className="flex flex-col gap-2">
-                  <Label htmlFor="document-upload">Image Upload (Max 2MB)</Label>
+                  <Label htmlFor="document-upload">Image Upload (Max 2MB, JPEG/PNG/WEBP only)</Label>
                   <Input 
                     id="document-upload" 
                     type="file" 
@@ -337,6 +385,43 @@ const InvestPrivateMarketDetails = () => {
             </div>
           </div>
 
+          {history.length > 0 && (
+            <div className="space-y-3 pt-6 border-t border-border/60">
+              <h3 className="text-lg font-semibold flex items-center gap-2">
+                <CheckCircle2 className="w-5 h-5 text-primary" />
+                Your Investments
+              </h3>
+              <div className="space-y-3">
+                {history.map((tx: any) => (
+                  <div key={tx.id} className="bg-secondary/30 rounded-xl p-4 border border-border/50 flex flex-col sm:flex-row justify-between sm:items-center gap-4">
+                    <div>
+                      <div className="font-semibold text-lg">₦{Number(tx.amount).toLocaleString()} NGN</div>
+                      <div className="text-sm text-muted-foreground">
+                        {new Date(tx.createdAt).toLocaleString()}
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      {tx.status === "CONFIRMED" ? (
+                        <>
+                          <div className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-500 mb-1">
+                            Confirmed
+                          </div>
+                          {tx.expectedShares && (
+                            <div className="text-sm font-medium">Expected Share: {tx.expectedShares}%</div>
+                          )}
+                        </>
+                      ) : (
+                        <div className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-orange-500/10 text-orange-500">
+                          Pending Verification
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
         </div>
       </main>
 
@@ -352,7 +437,7 @@ const InvestPrivateMarketDetails = () => {
             <div className="bg-secondary/30 p-4 rounded-xl border border-border/50 space-y-3">
               <div className="flex justify-between items-center">
                 <span className="text-sm text-muted-foreground">Account Name:</span>
-                <span className="font-semibold text-sm text-right">Edidiong Emmanuel Uwemedimo</span>
+                <span className="font-semibold text-sm text-right">MAGNIFY MARKETING</span>
               </div>
               <div className="flex justify-between items-center">
                 <span className="text-sm text-muted-foreground">Minimum Transfer Amount:</span>
@@ -360,11 +445,11 @@ const InvestPrivateMarketDetails = () => {
               </div>
               <div className="flex justify-between items-center">
                 <span className="text-sm text-muted-foreground">Account Number:</span>
-                <span className="font-semibold text-sm">8168616904</span>
+                <span className="font-semibold text-sm">8885765485</span>
               </div>
               <div className="flex justify-between items-center">
                 <span className="text-sm text-muted-foreground">Bank:</span>
-                <span className="font-semibold text-sm">Moniepoint MFB</span>
+                <span className="font-semibold text-sm">PalmPay</span>
               </div>
             </div>
             <div className="bg-primary/5 p-4 rounded-xl border border-primary/20">

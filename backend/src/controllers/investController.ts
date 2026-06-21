@@ -1,5 +1,6 @@
 import type { Request, Response } from "express";
 import { pool } from "../db.js";
+import { resolveUserId } from "../lib/dbHelpers.js";
 import { recordReferralAction, REFERRAL_POINTS } from "../lib/referral.js";
 
 /**
@@ -60,6 +61,38 @@ export async function getPrivateMarketStats(req: Request, res: Response) {
     return res.json({ totalInvested });
   } catch (error) {
     console.error(`Error fetching stats for investment ${investmentId}:`, error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+}
+
+/**
+ * GET /investments/private-market/history/:privyUserId
+ * Fetches the private market purchase history for a given user.
+ */
+export async function getPrivateMarketHistory(req: Request, res: Response) {
+  const { privyUserId } = req.params;
+
+  if (!privyUserId) {
+    return res.status(400).json({ error: "Missing Privy User ID" });
+  }
+
+  try {
+    const userId = await resolveUserId(privyUserId);
+    if (!userId) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    const historyRes = await pool.query(
+      `SELECT id, investment_id as "investmentId", amount, status, expected_shares as "expectedShares", created_at as "createdAt"
+       FROM private_market_purchases
+       WHERE user_id = $1
+       ORDER BY created_at DESC`,
+      [userId]
+    );
+
+    return res.json(historyRes.rows);
+  } catch (error) {
+    console.error(`Error fetching private market history for user ${privyUserId}:`, error);
     return res.status(500).json({ error: "Internal server error" });
   }
 }

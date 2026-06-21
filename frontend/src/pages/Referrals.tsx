@@ -4,7 +4,7 @@ import { usePrivy } from "@privy-io/react-auth";
 import { apiFetch } from "@/services/apiClient";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Copy, Gift, Settings, ArrowRight, UserPlus, CheckCircle2 } from "lucide-react";
+import { Copy, Gift, ArrowRight, UserPlus, CheckCircle2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
 
@@ -39,9 +39,6 @@ const Referrals = () => {
   
   const [data, setData] = useState<ReferralData | null>(null);
   const [loading, setLoading] = useState(true);
-  const [editingSlug, setEditingSlug] = useState(false);
-  const [newSlug, setNewSlug] = useState("");
-  const [slugLoading, setSlugLoading] = useState(false);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -53,7 +50,6 @@ const Referrals = () => {
         if (res.ok) {
           const json = await res.json();
           setData(json);
-          setNewSlug(json.referralCode);
         }
       } catch (err) {
         console.error("Error fetching referral data:", err);
@@ -65,31 +61,7 @@ const Referrals = () => {
     fetchData();
   }, [ready, authenticated, user?.id]);
 
-  const handleUpdateSlug = async () => {
-    if (!user?.id) return;
-    
-    try {
-      setSlugLoading(true);
-      const res = await apiFetch(`/users/${user.id}/referral`, {
-        method: "PUT",
-        body: JSON.stringify({ referralCode: newSlug }),
-      });
-      
-      const result = await res.json();
-      
-      if (res.ok) {
-        toast({ title: "Success", description: "Referral link updated successfully!" });
-        setData((prev) => prev ? { ...prev, referralCode: newSlug } : null);
-        setEditingSlug(false);
-      } else {
-        toast({ title: "Error", description: result.error || "Failed to update link", variant: "destructive" });
-      }
-    } catch (err) {
-      toast({ title: "Error", description: "Something went wrong.", variant: "destructive" });
-    } finally {
-      setSlugLoading(false);
-    }
-  };
+
 
   const copyLink = () => {
     if (!data) return;
@@ -157,46 +129,17 @@ const Referrals = () => {
                 <div>
                   <div className="flex items-center justify-between mb-4">
                     <h2 className="text-lg font-semibold">Your Referral Link</h2>
-                    <Button 
-                      variant="ghost" 
-                      size="icon"
-                      onClick={() => setEditingSlug(!editingSlug)}
-                      className="text-muted-foreground hover:text-foreground"
-                    >
-                      <Settings className="w-4 h-4" />
-                    </Button>
                   </div>
 
-                  {editingSlug ? (
-                    <div className="space-y-3">
-                      <div className="flex gap-2">
-                        <Input 
-                          value={newSlug} 
-                          onChange={(e) => setNewSlug(e.target.value)}
-                          placeholder="custom-slug"
-                          className="font-mono"
-                        />
-                        <Button onClick={handleUpdateSlug} disabled={slugLoading || !newSlug || newSlug === data.referralCode}>
-                          Save
-                        </Button>
-                      </div>
-                      <p className="text-xs text-muted-foreground">
-                        Letters, numbers, and hyphens only.
-                      </p>
-                    </div>
-                  ) : (
-                    <div className="p-4 rounded-xl bg-secondary/30 border border-border/40 font-mono text-sm break-all">
-                      {window.location.origin}/r/{data.referralCode}
-                    </div>
-                  )}
+                  <div className="p-4 rounded-xl bg-secondary/30 border border-border/40 font-mono text-sm break-all">
+                    {window.location.origin}/r/{data.referralCode}
+                  </div>
                 </div>
 
-                {!editingSlug && (
-                  <Button className="w-full mt-6 rounded-xl gap-2 font-semibold" onClick={copyLink}>
-                    <Copy className="w-4 h-4" />
-                    Copy Link
-                  </Button>
-                )}
+                <Button className="w-full mt-6 rounded-xl gap-2 font-semibold" onClick={copyLink}>
+                  <Copy className="w-4 h-4" />
+                  Copy Link
+                </Button>
               </div>
             </div>
 
