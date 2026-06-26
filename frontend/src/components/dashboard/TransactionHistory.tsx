@@ -183,7 +183,8 @@ export const TransactionHistory = ({
                         <span className="font-mono text-base font-medium">{ft.usdcAmount ?? ft.amount} USDC</span>
                       </div>
                       <div className="text-xs text-muted-foreground opacity-80">
-                        <div><span className="font-medium text-foreground/70">Fiat Amount:</span> ₦{(ft.fiatAmount ?? ft.amount)?.toLocaleString()}</div>
+                        <div><span className="font-medium text-foreground/70">Fiat Amount:</span> {(ft as any).currency ? `${(ft as any).currency} ` : "₦"}{(ft.fiatAmount ?? ft.amount)?.toLocaleString()}</div>
+                        {(ft as any).rate && <div><span className="font-medium text-foreground/70">Rate:</span> {(ft as any).rate} {(ft as any).currency || "NGN"}/USDC</div>}
                         <div><span className="font-medium text-foreground/70">Status:</span> {ft.status}</div>
                       </div>
                     </div>

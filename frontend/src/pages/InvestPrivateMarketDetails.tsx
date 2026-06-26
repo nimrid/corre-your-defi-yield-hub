@@ -21,7 +21,10 @@ const InvestPrivateMarketDetails = () => {
 
   const [calcAmount, setCalcAmount] = useState("5000");
   const calcAmountNum = Number(calcAmount) || 0;
-  const roiRate = calcAmountNum >= 1500000 ? 0.15 : 0.10;
+  
+  // ROI calculation up to 15%
+  const roiRate = 0.15;
+  
   const expectedProfit = calcAmountNum * roiRate;
   const expectedTotal = calcAmountNum + expectedProfit;
 
@@ -226,15 +229,9 @@ const InvestPrivateMarketDetails = () => {
                 </h3>
                 <ul className="space-y-3">
                   <li className="bg-secondary/30 rounded-xl p-4 border border-border/50">
-                    <div className="font-medium">Tier 1: 10% Fixed ROI</div>
+                    <div className="font-medium">Estimated ROI: Up to 15% per cycle</div>
                     <div className="text-sm text-muted-foreground mt-1">
-                      For capital injections below ₦1,500,000
-                    </div>
-                  </li>
-                  <li className="bg-secondary/30 rounded-xl p-4 border border-border/50">
-                    <div className="font-medium">Tier 2: 15% Fixed ROI</div>
-                    <div className="text-sm text-muted-foreground mt-1">
-                      For capital injections of ₦1,500,000 and above
+                      Based on physical production performance by active milling operations and pre-verified supply in Nigeria's palm oil market.
                     </div>
                   </li>
                 </ul>
@@ -256,12 +253,12 @@ const InvestPrivateMarketDetails = () => {
                 </div>
                 <div className="grid grid-cols-2 gap-4 text-sm">
                   <div>
-                    <div className="text-xs text-muted-foreground">Expected Profit ({roiRate * 100}%)</div>
-                    <div className="font-semibold text-emerald-500">+₦{expectedProfit.toLocaleString()}</div>
+                    <div className="text-xs text-muted-foreground">Expected Profit (Up to {(roiRate * 100).toFixed(0)}%)</div>
+                    <div className="font-semibold text-emerald-500">+₦{expectedProfit.toLocaleString(undefined, { maximumFractionDigits: 2 })}</div>
                   </div>
                   <div>
                     <div className="text-xs text-muted-foreground">Total Return</div>
-                    <div className="font-semibold text-primary">₦{expectedTotal.toLocaleString()}</div>
+                    <div className="font-semibold text-primary">₦{expectedTotal.toLocaleString(undefined, { maximumFractionDigits: 2 })}</div>
                   </div>
                 </div>
               </div>

@@ -520,7 +520,7 @@ const Home = () => {
                       ) : (
                         <div className="space-y-2">
                           <p className="text-sm text-muted-foreground">
-                            Top holdings in your Solana wallet:
+                            Top Stocks holdings in your wallet and current value
                           </p>
                           <ul className="space-y-2">
                             {stockBalances.slice(0, 5).map((holding) => (
