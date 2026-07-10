@@ -5,17 +5,10 @@ import { usePrivy } from "@privy-io/react-auth";
 import { Link } from "react-router-dom";
 import { Copy, Users } from "lucide-react";
 import { useEffect } from "react";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
+
 import { apiFetch } from "@/services/apiClient";
 
-const EARLY_ACCESS_STORAGE_KEY = "correEarlyAccessVerified";
-const EARLY_ACCESS_CODE = "DEFICORREPROD09";
+
 const TELEGRAM_COMMUNITY_URL = "https://t.me/+_ExsYWddoeNmZTA0";
 
 const Navigation = () => {
@@ -23,14 +16,6 @@ const Navigation = () => {
   const { ready, authenticated, login, logout, user } = usePrivy();
   const [referralData, setReferralData] = useState<{ referralCode: string; referralsCount: number } | null>(null);
   const [referralLoading, setReferralLoading] = useState(false);
-  const [showLoginPrompt, setShowLoginPrompt] = useState(false);
-  const [accessCode, setAccessCode] = useState("");
-  const [accessError, setAccessError] = useState(false);
-
-  const hasEarlyAccess =
-    typeof window !== "undefined" &&
-    (window.localStorage.getItem(EARLY_ACCESS_STORAGE_KEY) === "true" ||
-      window.localStorage.getItem("bypassBeta") === "true");
 
   useEffect(() => {
     if (ready && !authenticated) {
@@ -111,13 +96,7 @@ const Navigation = () => {
               </>
             ) : (
               <Button
-                onClick={() => {
-                  if (hasEarlyAccess) {
-                    login();
-                    return;
-                  }
-                  setShowLoginPrompt(true);
-                }}
+                onClick={() => login()}
                 variant="default"
                 className="bg-gradient-to-r from-primary to-accent hover:opacity-90"
               >
@@ -170,11 +149,7 @@ const Navigation = () => {
               <Button
                 onClick={() => {
                   setIsOpen(false);
-                  if (hasEarlyAccess) {
-                    login();
-                    return;
-                  }
-                  setShowLoginPrompt(true);
+                  login();
                 }}
                 className="w-full bg-gradient-to-r from-primary to-accent hover:opacity-90"
               >
@@ -185,60 +160,7 @@ const Navigation = () => {
         </div>
       )}
 
-      {/* Login Access Prompt */}
-      <Dialog open={showLoginPrompt} onOpenChange={setShowLoginPrompt}>
-        <DialogContent className="sm:max-w-md mx-4">
-          <DialogHeader>
-            <DialogTitle className="text-2xl font-bold">Early Access</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4 pt-4">
-            <p className="text-muted-foreground">
-              Corre is currently in private beta. Please enter your access code to proceed to login.
-            </p>
-            <div className="space-y-2">
-              <input
-                type="text"
-                placeholder="Access Code"
-                value={accessCode}
-                onChange={(e) => {
-                  setAccessCode(e.target.value.toUpperCase());
-                  setAccessError(false);
-                }}
-                className="flex h-12 w-full rounded-xl border border-input bg-background/50 px-3 py-2 text-md ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 transition-colors font-medium uppercase"
-              />
-              {accessError && (
-                <p className="text-sm text-destructive font-medium">
-                  Invalid code. Please join the waitlist below.
-                </p>
-              )}
-            </div>
-            <div className="flex flex-col gap-3 pt-2">
-              <Button
-                className="w-full text-lg h-12 bg-primary hover:opacity-90 transition-opacity"
-                onClick={() => {
-                  if (accessCode === EARLY_ACCESS_CODE) {
-                    window.localStorage.setItem(EARLY_ACCESS_STORAGE_KEY, "true");
-                    setShowLoginPrompt(false);
-                    setAccessCode('');
-                    login();
-                  } else {
-                    setAccessError(true);
-                  }
-                }}
-              >
-                Verify Code
-              </Button>
-              <Button
-                variant="outline"
-                className="w-full h-12 border-border/50 hover:bg-secondary/50"
-                onClick={() => window.open("https://forms.gle/8AHNnMPzs3r8EZaR9", "_blank")}
-              >
-                Join Waitlist
-              </Button>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
+
     </nav>
   );
 };

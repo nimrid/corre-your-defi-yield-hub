@@ -42,11 +42,10 @@ export default defineConfig(({ mode }) => {
     VitePWA({
       registerType: "autoUpdate",
       includeAssets: [
-        "favicon.ico",
         "robots.txt",
         "placeholder.svg",
         "corre_logo.png",
-        "corre_logoo.png",
+        "corre_logo_192.png",
       ],
       manifest: {
         name: "Corre - Earn DeFi Yields & Invest in Capital Markets",
@@ -59,19 +58,16 @@ export default defineConfig(({ mode }) => {
         theme_color: "#7C3AED",
         icons: [
           {
-            src: "/favicon.ico",
-            sizes: "48x48",
-            type: "image/x-icon",
+            src: "/corre_logo_192.png",
+            sizes: "192x192",
+            type: "image/png",
+            purpose: "any",
           },
           {
             src: "/corre_logo.png",
             sizes: "512x512",
             type: "image/png",
-          },
-          {
-            src: "/corre_logo.png",
-            sizes: "512x512",
-            type: "image/png",
+            purpose: "any maskable",
           },
         ],
       },

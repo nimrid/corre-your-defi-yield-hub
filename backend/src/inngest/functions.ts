@@ -116,9 +116,7 @@ export const sendWeeklyYieldEmails = inngest.createFunction(
                           </table>
                         </div>
                         
-                        <div style="margin-top: 32px; padding: 20px; background-color: #fffbeb; border: 1px solid #fef3c7; border-radius: 8px; text-align: center;">
-                          <p style="margin: 0; color: #92400e; font-size: 14px; font-weight: 600;">Early Access Code: <span style="font-family: monospace; font-size: 16px; background: #ffffff; padding: 4px 8px; border-radius: 4px; border: 1px solid #fde68a;">DEFICORREPROD09</span></p>
-                        </div>
+
 
                         <p style="margin: 24px 0 0; font-size: 16px;">Keep building your future with <strong>Corre</strong>.</p>
                       </div>
@@ -169,10 +167,7 @@ export const sendWeeklyYieldEmails = inngest.createFunction(
                           </table>
                         </div>
                         
-                        <div style="margin-bottom: 24px; padding: 20px; background-color: #fffbeb; border: 1px solid #fef3c7; border-radius: 8px; text-align: center;">
-                          <p style="margin: 0 0 8px; color: #92400e; font-size: 14px; font-weight: 600;">Ready to bypass the waitlist?</p>
-                          <p style="margin: 0; color: #92400e; font-size: 14px;">Use Access Code: <span style="font-family: monospace; font-size: 16px; background: #ffffff; padding: 4px 8px; border-radius: 4px; border: 1px solid #fde68a; font-weight: bold;">DEFICORREPROD09</span></p>
-                        </div>
+
 
                         <p style="margin: 0 0 24px; font-size: 16px;">Start earning today. Simply deposit funds into your Corre Vault to watch your balance compound automatically over time!</p>
                         
