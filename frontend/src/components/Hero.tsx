@@ -38,11 +38,11 @@ const Hero = () => {
 
         <div className="flex flex-col sm:flex-row gap-4 justify-center items-center animate-fade-in" style={{ animationDelay: '0.3s' }}>
           <Button
-            onClick={() => window.open("https://forms.gle/8AHNnMPzs3r8EZaR9", "_blank")}
+            onClick={() => login()}
             size="lg"
             className="group bg-gradient-to-r from-primary to-accent hover:opacity-90 transition-all glow-effect"
           >
-            Join the Waitlist
+            Sign Up
             <ArrowRight className="ml-2 w-4 h-4 group-hover:translate-x-1 transition-transform" />
           </Button>
           <Button size="lg" variant="outline" className="border-border/50 hover:bg-secondary/50">
@@ -53,7 +53,7 @@ const Hero = () => {
         {/* Stats */}
         <div className="grid grid-cols-2 md:grid-cols-3 gap-8 pt-12 max-w-3xl mx-auto animate-fade-in" style={{ animationDelay: '0.4s' }}>
           <div className="space-y-1">
-            <div className="text-3xl md:text-4xl font-bold gradient-text">$2.5B+</div>
+            <div className="text-3xl md:text-4xl font-bold gradient-text">$1.5M+</div>
             <div className="text-sm text-muted-foreground">Total Value Locked</div>
           </div>
           <div className="space-y-1">
@@ -61,7 +61,7 @@ const Hero = () => {
             <div className="text-sm text-muted-foreground">Average APY</div>
           </div>
           <div className="space-y-1 col-span-2 md:col-span-1">
-            <div className="text-3xl md:text-4xl font-bold gradient-text">50K+</div>
+            <div className="text-3xl md:text-4xl font-bold gradient-text">200+</div>
             <div className="text-sm text-muted-foreground">Active Users</div>
           </div>
         </div>

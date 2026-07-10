@@ -201,10 +201,10 @@ const LandingYieldEstimator = () => {
 
                             <div className="pt-2">
                                 <Button
-                                    onClick={() => window.open("https://forms.gle/8AHNnMPzs3r8EZaR9", "_blank")}
+                                    onClick={() => login()}
                                     className="w-full h-12 text-lg font-semibold bg-primary hover:opacity-90 transition-opacity"
                                 >
-                                    Join the Waitlist
+                                    Sign Up
                                 </Button>
                             </div>
                         </div>
