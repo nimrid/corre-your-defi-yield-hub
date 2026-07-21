@@ -3,7 +3,7 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 import { 
   Users, DollarSign, Shield, TrendingUp, AlertTriangle, 
   Wallet, ArrowRightLeft, LayoutDashboard, Settings, 
-  LogOut, Bell, Search, Menu, X
+  LogOut, Bell, Search, Menu, X, Briefcase
 } from 'lucide-react';
 import { 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, 
@@ -52,6 +52,7 @@ function Dashboard() {
     suspiciousFlags: 0,
     transactionVolume: 0,
     totalWallets: 0,
+    totalPrivateMarketVolume: 0,
     charts: {
       dailyUsers: [],
       monthlyUsers: [],
@@ -72,7 +73,11 @@ function Dashboard() {
         const apiUrl = import.meta.env.VITE_API_URL || 'https://defi-corre.onrender.com';
         const res = await fetch(`${apiUrl}/admin/stats`);
         const data = await res.json();
-        setStats(data);
+        if (data.error) {
+          console.error("API Error:", data.error);
+        } else {
+          setStats(data);
+        }
       } catch (err) {
         console.error("Failed to fetch admin stats:", err);
       } finally {
@@ -271,6 +276,13 @@ function Dashboard() {
                 icon={AlertTriangle} 
                 color="rose" 
                 alert 
+              />
+              <MetricCard 
+                loading={loading}
+                title="Private Market Volume" 
+                value={`₦${stats.totalPrivateMarketVolume.toLocaleString(undefined, { minimumFractionDigits: 2 })}`} 
+                icon={Briefcase} 
+                color="indigo" 
               />
             </div>
 

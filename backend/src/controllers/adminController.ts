@@ -16,10 +16,11 @@ export async function getDashboardStats(req: Request, res: Response) {
           (SELECT COUNT(*) FROM users) as total_users,
           (SELECT COUNT(*) FROM suspicious_activity) as suspicious_flags,
           (SELECT COUNT(*) FROM wallets) as total_wallets,
-          (SELECT COUNT(*) FROM users WHERE updated_at >= NOW() - INTERVAL '60 days') as active_users,
+          (SELECT COUNT(*) FROM users WHERE created_at >= NOW() - INTERVAL '60 days') as active_users,
           (SELECT SUM(usdc_amount::numeric) FROM stock_purchases) as total_stock_purchases,
           (SELECT SUM(usdc_amount::numeric) FROM stock_sales) as total_stock_sales,
-          (SELECT SUM(amount::numeric) FROM transactions WHERE asset_symbol = 'USDC') as base_transaction_volume
+          (SELECT SUM(amount::numeric) FROM transactions WHERE asset_symbol = 'USDC') as base_transaction_volume,
+          (SELECT SUM(amount::numeric) FROM private_market_purchases WHERE status = 'CONFIRMED') as total_private_market_volume
       `),
       pool.query(`
         SELECT 
@@ -81,6 +82,7 @@ export async function getDashboardStats(req: Request, res: Response) {
     const totalStockPurchases = parseFloat(statsRow.total_stock_purchases || "0");
     const totalStockSales = parseFloat(statsRow.total_stock_sales || "0");
     const baseTransactionVolume = parseFloat(statsRow.base_transaction_volume || "0");
+    const totalPrivateMarketVolume = parseFloat(statsRow.total_private_market_volume || "0");
 
     let standardSavings = 0;
     let shieldedSavings = 0;
@@ -112,6 +114,7 @@ export async function getDashboardStats(req: Request, res: Response) {
       suspiciousFlags,
       transactionVolume,
       totalWallets,
+      totalPrivateMarketVolume,
       charts: {
         dailyUsers: dailyUsersResult.rows.map(r => ({ date: r.date, count: parseInt(r.count, 10) })),
         monthlyUsers: monthlyUsersResult.rows.map(r => ({ date: r.date, count: parseInt(r.count, 10) })),

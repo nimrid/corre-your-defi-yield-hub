@@ -53,7 +53,7 @@ export async function getPrivateMarketStats(req: Request, res: Response) {
 
   try {
     const statsRes = await pool.query(
-      "SELECT SUM(amount) as total FROM private_market_purchases WHERE investment_id = $1",
+      "SELECT SUM(amount) as total FROM private_market_purchases WHERE investment_id = $1 AND status = 'CONFIRMED'",
       [investmentId]
     );
 

@@ -34,7 +34,7 @@ const InvestPrivateMarketDetails = () => {
 
   const [history, setHistory] = useState<any[]>([]);
   const [totalInvested, setTotalInvested] = useState<number>(0);
-  const targetAmount = 50000000; // 50,000,000 NGN
+  const targetAmount = 2000000; // 2,000,000 NGN
 
   useEffect(() => {
     if (id === "nilep-palm-oil") {
@@ -206,7 +206,7 @@ const InvestPrivateMarketDetails = () => {
           <div className="space-y-2">
             <div className="flex justify-between items-end">
               <h3 className="font-semibold text-sm">Funding Progress</h3>
-              <span className="text-xs text-muted-foreground">Target: ₦50,000,000</span>
+              <span className="text-xs text-muted-foreground">Target: ₦2,000,000</span>
             </div>
             <div className="h-3 w-full bg-secondary/50 rounded-full overflow-hidden">
               <div 
