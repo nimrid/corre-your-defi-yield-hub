@@ -17,7 +17,7 @@ import { usePrivy } from "@privy-io/react-auth";
 import {
   useWallets as useSolanaWallets,
 } from "@privy-io/react-auth/solana";
-import { apiFetch } from "@/services/apiClient";
+import { useInvalidateTransactionHistory } from "@/hooks/useTransactionHistory";
 
 const USDC_MINT = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"; // Solana USDC
 
@@ -25,6 +25,7 @@ const SendWallet = () => {
   const navigate = useNavigate();
   const { user } = usePrivy();
   const { wallets } = useSolanaWallets();
+  const invalidateTxHistory = useInvalidateTransactionHistory();
 
   const [amount, setAmount] = useState("");
   const [address, setAddress] = useState("");
@@ -317,9 +318,11 @@ const SendWallet = () => {
             toAddress: address,
             source: "send_wallet",
           }),
-        }).catch(() => {
-          // Ignore errors here; you can add logging or toasts if desired
+        }).finally(() => {
+          void invalidateTxHistory();
         });
+      } else {
+        void invalidateTxHistory();
       }
     } catch (err: any) {
       setError(err?.message ?? "Failed to send transaction.");

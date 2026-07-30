@@ -1,6 +1,7 @@
 import Navigation from "@/components/Navigation";
 import { ArrowLeft } from "lucide-react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams, useLocation } from "react-router-dom";
+import { useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { useTranslation } from "react-i18next";
 import { usePrivy } from "@privy-io/react-auth";
@@ -74,6 +75,41 @@ const InvestStockDetails = () => {
     userShares,
     setUserShares,
   });
+
+  // ── Auto-open trade dialog when redirected from ChatGPT / Claude ─────────────
+  const location = useLocation();
+  const autoOpened = useRef(false);
+
+  useEffect(() => {
+    if (!token || autoOpened.current) return;
+
+    const searchString = location.search || window.location.search || "";
+    const searchParams = new URLSearchParams(searchString);
+    let amount = searchParams.get("amount");
+    let shares = searchParams.get("shares");
+    let action = searchParams.get("action");
+
+    if (!amount && !shares && !action && window.location.hash.includes("?")) {
+      const hashParams = new URLSearchParams(window.location.hash.split("?")[1]);
+      amount = hashParams.get("amount");
+      shares = hashParams.get("shares");
+      action = hashParams.get("action");
+    }
+
+    if (!amount && !shares && !action) return;
+
+    autoOpened.current = true;
+
+    const timer = setTimeout(() => {
+      if (action === "sell" || shares) {
+        sellTrade.openDialogWithAmount(shares || amount || "");
+      } else {
+        buyTrade.openDialogWithAmount(amount || "");
+      }
+    }, 150);
+
+    return () => clearTimeout(timer);
+  }, [token, location.search]);
 
   // ── Render ──────────────────────────────────────────────────────────────────
   return (

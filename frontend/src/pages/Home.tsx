@@ -22,7 +22,8 @@ import { usePajSession } from "@/hooks/usePajSession";
 
 import { TotalBalance } from "@/components/dashboard/BalanceComponents";
 import { WalletRow, LinkedWalletRow } from "@/components/dashboard/WalletComponents";
-import { TransactionHistory, TransactionRow, StockHistoryRow, SavingsActivityRow } from "@/components/dashboard/TransactionHistory";
+import { TransactionHistory } from "@/components/dashboard/TransactionHistory";
+import { useTransactionHistory } from "@/hooks/useTransactionHistory";
 
 interface StockHolding {
   mint: string;
@@ -39,25 +40,12 @@ const Home = () => {
   const { wallets, ready: walletsReady } = useWallets();
   const navigate = useNavigate();
   const hasSyncedRef = useRef(false);
-  const [transactions, setTransactions] = useState<TransactionRow[]>([]);
-  const [txLoading, setTxLoading] = useState(false);
-  const [txError, setTxError] = useState<string | null>(null);
-  const [savingsActivity, setSavingsActivity] = useState<SavingsActivityRow[]>([]);
-  const [savingsLoading, setSavingsLoading] = useState(false);
-  const [savingsError, setSavingsError] = useState<string | null>(null);
-  const [stockHistory, setStockHistory] = useState<StockHistoryRow[]>([]);
-  const [privateMarketHistory, setPrivateMarketHistory] = useState<any[]>([]);
-  const [stockHistoryLoading, setStockHistoryLoading] = useState(false);
-  const [stockHistoryError, setStockHistoryError] = useState<string | null>(null);
   const [stocksOpen, setStocksOpen] = useState(false);
   const [stockBalances, setStockBalances] = useState<StockHolding[] | null>(null);
   const [stocksLoading, setStocksLoading] = useState(false);
   const [stocksError, setStocksError] = useState<string | null>(null);
 
   const { sessionToken } = usePajSession();
-  const [fiatTransactions, setFiatTransactions] = useState<PajTransaction[]>([]);
-  const [fiatLoading, setFiatLoading] = useState(false);
-  const [fiatError, setFiatError] = useState<string | null>(null);
 
   const solanaWallets = wallets.filter((w) => w.walletClientType === "solana");
   const ethereumWallets = wallets.filter((w) => w.walletClientType === "ethereum");
@@ -76,6 +64,19 @@ const Home = () => {
   const primarySolanaAddress: string | undefined =
     (solanaWallets[0] as any)?.address ??
     (linkedSolana[0] as any)?.address;
+
+  // React Query cached transaction history
+  const {
+    data: txHistoryData,
+    isLoading: txHistoryLoading,
+    error: txHistoryError,
+  } = useTransactionHistory(user?.id, primarySolanaAddress, sessionToken);
+
+  const transactions = txHistoryData?.transactions ?? [];
+  const savingsActivity = txHistoryData?.savingsActivity ?? [];
+  const stockHistory = txHistoryData?.stockHistory ?? [];
+  const privateMarketHistory = txHistoryData?.privateMarketHistory ?? [];
+  const fiatTransactions = txHistoryData?.fiatTransactions ?? [];
 
   useEffect(() => {
     if (ready && !authenticated) {
@@ -243,135 +244,6 @@ const Home = () => {
 
     void fetchStocks();
   }, [stocksOpen, primarySolanaAddress, stockBalances, stocksLoading]);
-
-  useEffect(() => {
-    const fetchTransactions = async () => {
-      if (!user?.id) return;
-
-      try {
-        setTxLoading(true);
-        setTxError(null);
-
-        // Fetch app-recorded transactions from our DB
-        const res = await apiFetch(`/transactions/${user.id}`);
-        if (!res.ok) {
-          throw new Error("Failed to fetch transactions");
-        }
-        const data = await res.json();
-        const dbTransactions: TransactionRow[] = Array.isArray(data) ? data : [];
-
-        // Fetch on-chain USDC transfer history via Helius
-        let onchainTransactions: TransactionRow[] = [];
-        if (primarySolanaAddress) {
-          try {
-            const onchainRes = await apiFetch(`/transactions/onchain/${primarySolanaAddress}`);
-            if (onchainRes.ok) {
-              const onchainData = await onchainRes.json();
-              onchainTransactions = Array.isArray(onchainData) ? onchainData : [];
-            }
-          } catch (err) {
-            console.warn("Failed to fetch on-chain transactions:", err);
-          }
-        }
-
-        // De-duplicate: if a tx signature exists in DB records, skip the on-chain duplicate
-        const dbSignatures = new Set(
-          dbTransactions
-            .map((tx) => tx.txSignature)
-            .filter(Boolean)
-        );
-        const uniqueOnchain = onchainTransactions.filter(
-          (tx) => !tx.txSignature || !dbSignatures.has(tx.txSignature)
-        );
-
-        setTransactions([...dbTransactions, ...uniqueOnchain]);
-      } catch (err: any) {
-        setTxError(err?.message ?? "Failed to load transactions");
-      } finally {
-        setTxLoading(false);
-      }
-    };
-
-    const fetchSavingsActivity = async () => {
-      if (!user?.id) return;
-
-      try {
-        setSavingsLoading(true);
-        setSavingsError(null);
-
-        const res = await apiFetch(`/savings-activity/${user.id}`);
-        if (!res.ok) {
-          throw new Error("Failed to fetch savings activity");
-        }
-
-        const data = await res.json();
-        setSavingsActivity(Array.isArray(data) ? data : []);
-      } catch (err: any) {
-        setSavingsError(err?.message ?? "Failed to load savings activity");
-      } finally {
-        setSavingsLoading(false);
-      }
-    };
-
-    const fetchStockHistory = async () => {
-      if (!user?.id) return;
-
-      try {
-        setStockHistoryLoading(true);
-        setStockHistoryError(null);
-
-        const res = await apiFetch(`/stock-history/${user.id}`);
-        if (!res.ok) {
-          throw new Error("Failed to fetch stock history");
-        }
-
-        const data = await res.json();
-        setStockHistory(Array.isArray(data) ? data : []);
-      } catch (err: any) {
-        setStockHistoryError(err?.message ?? "Failed to load stock history");
-      } finally {
-        setStockHistoryLoading(false);
-      }
-    };
-
-    const fetchPrivateMarketHistory = async () => {
-      if (!user?.id) return;
-      try {
-        const res = await apiFetch(`/investments/private-market/history/${user.id}`);
-        if (res.ok) {
-          const data = await res.json();
-          setPrivateMarketHistory(Array.isArray(data) ? data : []);
-        }
-      } catch (err) {
-        console.error("Failed to fetch private market history", err);
-      }
-    };
-
-    if (ready && authenticated && user) {
-      void fetchTransactions();
-      void fetchSavingsActivity();
-      void fetchStockHistory();
-      void fetchPrivateMarketHistory();
-    }
-  }, [ready, authenticated, user, primarySolanaAddress]);
-
-  useEffect(() => {
-    const fetchFiatTransactions = async () => {
-      if (!sessionToken) return;
-      try {
-        setFiatLoading(true);
-        setFiatError(null);
-        const data = await getAllTransactions(sessionToken);
-        setFiatTransactions(Array.isArray(data) ? data : []);
-      } catch (err: any) {
-        console.error("Failed to load fiat transactions", err);
-        setFiatError(err?.message ?? "Failed to load fiat transactions");
-      } finally {
-        setFiatLoading(false);
-      }
-    };
-    fetchFiatTransactions();
-  }, [sessionToken]);
 
   return (
     <div className="min-h-screen bg-background text-foreground">
@@ -578,12 +450,12 @@ const Home = () => {
               stockHistory={stockHistory}
               fiatTransactions={fiatTransactions}
               privateMarketHistory={privateMarketHistory}
-              txLoading={txLoading}
-              savingsLoading={savingsLoading}
-              fiatLoading={fiatLoading}
-              txError={txError}
-              savingsError={savingsError}
-              fiatError={fiatError}
+              txLoading={txHistoryLoading}
+              savingsLoading={txHistoryLoading}
+              fiatLoading={txHistoryLoading}
+              txError={txHistoryError ? (txHistoryError as Error).message : null}
+              savingsError={null}
+              fiatError={null}
             />
           </div>
         </div>

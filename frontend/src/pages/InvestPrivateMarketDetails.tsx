@@ -1,6 +1,6 @@
 import Navigation from "@/components/Navigation";
 import { ArrowLeft, MapPin, TrendingUp, Calendar, Shield, CheckCircle2, UploadCloud } from "lucide-react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams, useLocation } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { useState, useEffect } from "react";
@@ -11,12 +11,23 @@ import { Label } from "@/components/ui/label";
 
 const InvestPrivateMarketDetails = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const { id } = useParams();
   const { toast } = useToast();
   const { user } = usePrivy();
 
   const [buyDialogOpen, setBuyDialogOpen] = useState(false);
   const [amount, setAmount] = useState("");
+
+  // Auto-open buy dialog when amount query parameter is passed (e.g. from ChatGPT MCP link)
+  useEffect(() => {
+    const searchParams = new URLSearchParams(location.search || window.location.search);
+    const paramAmount = searchParams.get("amount");
+    if (paramAmount) {
+      setAmount(paramAmount);
+      setBuyDialogOpen(true);
+    }
+  }, [location.search]);
   const [submitting, setSubmitting] = useState(false);
 
   const [calcAmount, setCalcAmount] = useState("5000");

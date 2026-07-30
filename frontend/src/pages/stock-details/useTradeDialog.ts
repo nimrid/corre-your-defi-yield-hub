@@ -68,6 +68,8 @@ export function useTradeDialog(opts: UseTradeDialogOptions) {
     resetQuoteState();
   }, [resetQuoteState]);
 
+
+
   // ── Resolve taker address ─────────────────────────────────────────────────
   const resolveTaker = useCallback(async (): Promise<string | undefined> => {
     const solWallet = wallets[0] as any;
@@ -250,6 +252,19 @@ export function useTradeDialog(opts: UseTradeDialogOptions) {
     [token, direction, usdcBalanceRaw, userShares, resolveTaker],
   );
 
+  const openDialogWithAmount = useCallback(
+    (presetInput: string) => {
+      setOpen(true);
+      if (presetInput) {
+        handleInputChange(presetInput);
+      } else {
+        setInput("");
+        resetQuoteState();
+      }
+    },
+    [handleInputChange, resetQuoteState],
+  );
+
   // ── Execute trade ─────────────────────────────────────────────────────────
   const handleExecute = useCallback(async () => {
     if (!state.unsignedTx || !state.requestId || !token) return;
@@ -406,6 +421,7 @@ export function useTradeDialog(opts: UseTradeDialogOptions) {
     setInput: handleInputChange,
     ...state,
     openDialog,
+    openDialogWithAmount,
     handleExecute,
   };
 }

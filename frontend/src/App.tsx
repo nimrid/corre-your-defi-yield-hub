@@ -23,8 +23,11 @@ import BuyUSDC from "./pages/BuyUSDC";
 import BuyUSDCNaira from "./pages/BuyUSDCNaira";
 import Terms from "./pages/Terms";
 import Privacy from "./pages/Privacy";
+import Disclaimer from "./pages/Disclaimer";
 import About from "./pages/About";
 import Referrals from "./pages/Referrals";
+import Login from "./pages/Login";
+import ScrollToTop from "@/components/ScrollToTop";
 import { usePrivy } from "@privy-io/react-auth";
 import { ShieldCheck, WifiOff, RefreshCw } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -134,8 +137,10 @@ const App = () => {
         <Toaster />
         <Sonner />
         <BrowserRouter>
+          <ScrollToTop />
           <Routes>
             <Route path="/" element={<Index />} />
+            <Route path="/login" element={<Login />} />
             <Route path="/home" element={<Home />} />
             <Route path="/send" element={<Send />} />
             <Route path="/send/wallet" element={<SendWallet />} />
@@ -153,6 +158,7 @@ const App = () => {
             <Route path="/buy-usdc/naira" element={<BuyUSDCNaira />} />
             <Route path="/terms" element={<Terms />} />
             <Route path="/privacy" element={<Privacy />} />
+            <Route path="/disclaimer" element={<Disclaimer />} />
             <Route path="/about" element={<About />} />
             <Route path="/referrals" element={<Referrals />} />
             <Route path="/r/:slug" element={<ReferralRedirect />} />

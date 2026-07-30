@@ -4,7 +4,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ArrowLeft } from "lucide-react";
 import { FormEvent, useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import { usePrivy } from "@privy-io/react-auth";
 import { useSignAndSendTransaction, useWallets as useSolanaWallets } from "@privy-io/react-auth/solana";
 import { apiFetch } from "@/services/apiClient";
@@ -16,11 +16,22 @@ const savings_base_url = "https://api.lulo.fi";
 
 const SaveProtected = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const { user } = usePrivy();
   const { signAndSendTransaction } = useSignAndSendTransaction();
   const { wallets } = useSolanaWallets();
 
   const [amount, setAmount] = useState("");
+
+  // Pre-fill amount when coming from ChatGPT / Claude MCP link
+  useEffect(() => {
+    const searchString = location.search || window.location.search || "";
+    const searchParams = new URLSearchParams(searchString);
+    const paramAmount = searchParams.get("amount");
+    if (paramAmount) {
+      setAmount(paramAmount);
+    }
+  }, [location.search]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
