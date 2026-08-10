@@ -1,4 +1,4 @@
-import { usePrivy } from "@privy-io/react-auth";
+import { usePrivy, useSigners } from "@privy-io/react-auth";
 import { useEffect, useRef } from "react";
 
 /**
@@ -8,11 +8,14 @@ import { useEffect, useRef } from "react";
  * 1. ChatGPT redirects user here with ?redirect_uri=...&state=...
  * 2. We store the OAuth params in sessionStorage (they survive Privy's login flow)
  * 3. We auto-trigger Privy login if user isn't authenticated
- * 4. Once authenticated, we grab the Privy access token and redirect back to ChatGPT
+ * 4. Once authenticated, we delegate the agent signer (so in-chat signing works
+ *    without a separate "Authorize Agent" step), then redirect back to ChatGPT
  */
 const Login = () => {
-  const { ready, authenticated, login, getAccessToken } = usePrivy();
+  const { ready, authenticated, login, getAccessToken, user } = usePrivy();
+  const { addSigners } = useSigners();
   const loginTriggered = useRef(false);
+  const redirectTriggered = useRef(false);
 
   // Step 1: On mount, persist OAuth params so they survive Privy redirects
   useEffect(() => {
@@ -36,9 +39,11 @@ const Login = () => {
     }
   }, [ready, authenticated, login]);
 
-  // Step 3: Once authenticated, get access token and redirect back to ChatGPT
+  // Step 3: Once authenticated, delegate the agent signer, then redirect back to ChatGPT
   useEffect(() => {
     if (!ready || !authenticated) return;
+    if (redirectTriggered.current) return;
+    redirectTriggered.current = true;
 
     const redirectUri =
       new URLSearchParams(window.location.search).get("redirect_uri") ||
@@ -47,29 +52,63 @@ const Login = () => {
       new URLSearchParams(window.location.search).get("state") ||
       sessionStorage.getItem("oauth_state");
 
-    if (redirectUri && state) {
-      void getAccessToken().then((token) => {
-        // Clean up
-        sessionStorage.removeItem("oauth_redirect_uri");
-        sessionStorage.removeItem("oauth_state");
+    // Delegate the server-side agent signer to the user's embedded Solana wallet so
+    // in-chat transactions can be signed without the separate "Authorize Agent" button.
+    // Best-effort: never block the OAuth redirect if delegation fails (e.g. user
+    // dismisses the prompt) — they can still authorize later from the web app.
+    const ensureAgentDelegated = async () => {
+      try {
+        const signerId = import.meta.env.VITE_PRIVY_SIGNER_ID as string | undefined;
+        if (!signerId || typeof addSigners !== "function") return;
 
-        if (token) {
-          const separator = redirectUri.includes("?") ? "&" : "?";
-          window.location.href = `${redirectUri}${separator}code=${encodeURIComponent(token)}&state=${encodeURIComponent(state)}`;
-        } else {
-          // Fallback: redirect to home if token retrieval fails
+        const solWallet = user?.linkedAccounts?.find(
+          (a: any) =>
+            (a.type === "wallet" || a.type === "solana") &&
+            (a.chainType === "solana" ||
+              a.chain_type === "solana" ||
+              (a.address && !a.address.startsWith("0x"))) &&
+            a.walletClientType === "privy"
+        );
+
+        if (!solWallet || (solWallet as any).delegated === true) return;
+
+        await addSigners({
+          address: (solWallet as any).address,
+          signers: [{ signerId }],
+        });
+      } catch (err) {
+        console.warn("[Login] Agent delegation skipped:", err);
+      }
+    };
+
+    const finishRedirect = async () => {
+      await ensureAgentDelegated();
+
+      if (redirectUri && state) {
+        try {
+          const token = await getAccessToken();
+          sessionStorage.removeItem("oauth_redirect_uri");
+          sessionStorage.removeItem("oauth_state");
+
+          if (token) {
+            const separator = redirectUri.includes("?") ? "&" : "?";
+            window.location.href = `${redirectUri}${separator}code=${encodeURIComponent(token)}&state=${encodeURIComponent(state)}`;
+          } else {
+            window.location.href = "/home";
+          }
+        } catch {
+          sessionStorage.removeItem("oauth_redirect_uri");
+          sessionStorage.removeItem("oauth_state");
           window.location.href = "/home";
         }
-      }).catch(() => {
-        sessionStorage.removeItem("oauth_redirect_uri");
-        sessionStorage.removeItem("oauth_state");
+      } else {
+        // No OAuth params — normal login, go to dashboard
         window.location.href = "/home";
-      });
-    } else {
-      // No OAuth params — normal login, go to dashboard
-      window.location.href = "/home";
-    }
-  }, [ready, authenticated, getAccessToken]);
+      }
+    };
+
+    void finishRedirect();
+  }, [ready, authenticated, getAccessToken, addSigners, user]);
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-b from-background via-background to-muted text-foreground px-4">
@@ -85,7 +124,7 @@ const Login = () => {
             Connecting to Corre
           </h1>
           <p className="text-sm text-muted-foreground">
-            Securely signing you in with Privy. You'll be redirected back automatically.
+            Securely signing you in and authorizing your AI agent with Privy. You'll be redirected back automatically.
           </p>
         </div>
         <div className="flex items-center justify-center gap-2 text-xs text-muted-foreground pt-2">

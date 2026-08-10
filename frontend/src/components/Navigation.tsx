@@ -1,10 +1,11 @@
 import { Button } from "@/components/ui/button";
 import { Menu, X } from "lucide-react";
 import { useState } from "react";
-import { usePrivy } from "@privy-io/react-auth";
+import { usePrivy, useSigners } from "@privy-io/react-auth";
 import { Link } from "react-router-dom";
 import { Copy, Users } from "lucide-react";
 import { useEffect } from "react";
+import { toast } from "sonner";
 
 import { apiFetch } from "@/services/apiClient";
 
@@ -14,8 +15,10 @@ const TELEGRAM_COMMUNITY_URL = "https://t.me/+_ExsYWddoeNmZTA0";
 const Navigation = () => {
   const [isOpen, setIsOpen] = useState(false);
   const { ready, authenticated, login, logout, user } = usePrivy();
+  const { addSigners } = useSigners();
   const [referralData, setReferralData] = useState<{ referralCode: string; referralsCount: number } | null>(null);
   const [referralLoading, setReferralLoading] = useState(false);
+  const [authorizing, setAuthorizing] = useState(false);
 
   useEffect(() => {
     if (ready && !authenticated) {
@@ -25,6 +28,14 @@ const Navigation = () => {
       }
     }
   }, [ready, authenticated, login]);
+
+  const solWallet = user?.linkedAccounts?.find(
+    (a: any) =>
+      (a.type === "wallet" || a.type === "solana") &&
+      (a.chainType === "solana" || a.chain_type === "solana" || (a.address && !a.address.startsWith("0x"))) &&
+      a.walletClientType === "privy"
+  );
+  const needsDelegation = solWallet && !(solWallet as any).delegated;
 
   useEffect(() => {
     const fetchReferralData = async () => {
@@ -56,6 +67,37 @@ const Navigation = () => {
     fetchReferralData();
   }, [ready, authenticated, user?.id]);
 
+  const handleAuthorize = async () => {
+    if (authorizing) return;
+    if (!solWallet) {
+      toast.error("No Solana wallet found.");
+      return;
+    }
+    if (typeof addSigners !== "function") {
+      toast.error("Your Privy SDK does not support addSigners.");
+      return;
+    }
+
+    setAuthorizing(true);
+    try {
+      console.log("Authorizing agent with signer ID:", import.meta.env.VITE_PRIVY_SIGNER_ID);
+      await addSigners({
+        address: (solWallet as any).address,
+        signers: [{ signerId: import.meta.env.VITE_PRIVY_SIGNER_ID as string }],
+      });
+      toast.success("Agent Authorized", {
+        description: "You can now send transactions in chat.",
+      });
+    } catch (err: any) {
+      console.error("Failed to authorize agent:", err);
+      toast.error("Authorization Failed", {
+        description: err?.message || JSON.stringify(err),
+      });
+    } finally {
+      setAuthorizing(false);
+    }
+  };
+
   return (
     <nav className="fixed top-0 left-0 right-0 z-50 glass-card border-b border-border/50">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -74,6 +116,16 @@ const Navigation = () => {
           <div className="hidden md:flex items-center space-x-4">
             {ready && authenticated ? (
               <>
+                {needsDelegation && (
+                  <Button
+                    onClick={handleAuthorize}
+                    disabled={authorizing}
+                    variant="destructive"
+                    className={authorizing ? "" : "animate-pulse"}
+                  >
+                    {authorizing ? "Authorizing..." : "Authorize Agent"}
+                  </Button>
+                )}
                 <Link to="/home">
                   <Button variant="ghost">Dashboard</Button>
                 </Link>
@@ -121,6 +173,16 @@ const Navigation = () => {
           <div className="px-4 py-6 space-y-4">
             {ready && authenticated ? (
               <div className="flex flex-col space-y-2">
+                {needsDelegation && (
+                  <Button
+                    onClick={handleAuthorize}
+                    disabled={authorizing}
+                    variant="destructive"
+                    className={authorizing ? "w-full" : "animate-pulse w-full"}
+                  >
+                    {authorizing ? "Authorizing..." : "Authorize Agent"}
+                  </Button>
+                )}
                 <Link to="/home" onClick={() => setIsOpen(false)}>
                   <Button variant="ghost" className="w-full">Dashboard</Button>
                 </Link>

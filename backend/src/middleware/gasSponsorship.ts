@@ -113,12 +113,13 @@ export async function checkGasSponsorshipEligibility(
     };
   } catch (err) {
     console.error("Error checking gas sponsorship eligibility:", err);
-    // Fail open - allow transaction if we can't check (prevents blocking legitimate users)
-    // In production, you might want to fail closed for security
+    // Fail closed on SPONSORSHIP but open on the transaction itself: if we can't
+    // verify rate limits / spend caps we must not spend the fee payer's funds,
+    // but we also don't block the user's own send (they can pay their own gas).
     return {
       allowed: true,
-      sponsorshipAllowed: true,
-      reason: "Eligibility check unavailable, proceeding with caution",
+      sponsorshipAllowed: false,
+      reason: "Eligibility check unavailable — gas sponsorship disabled for this transaction",
     };
   }
 }

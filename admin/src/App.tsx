@@ -71,7 +71,9 @@ function Dashboard() {
     const fetchStats = async () => {
       try {
         const apiUrl = import.meta.env.VITE_API_URL || 'https://defi-corre.onrender.com';
-        const res = await fetch(`${apiUrl}/admin/stats`);
+        const res = await fetch(`${apiUrl}/admin/stats`, {
+          headers: { 'x-admin-key': import.meta.env.VITE_ADMIN_KEY || '' },
+        });
         const data = await res.json();
         if (data.error) {
           console.error("API Error:", data.error);
@@ -93,7 +95,9 @@ function Dashboard() {
         setLoadingUsers(true);
         try {
           const apiUrl = import.meta.env.VITE_API_URL || 'https://defi-corre.onrender.com';
-          const res = await fetch(`${apiUrl}/admin/users`);
+          const res = await fetch(`${apiUrl}/admin/users`, {
+            headers: { 'x-admin-key': import.meta.env.VITE_ADMIN_KEY || '' },
+          });
           const data = await res.json();
           setUsersList(data);
         } catch (err) {

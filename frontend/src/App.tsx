@@ -27,11 +27,14 @@ import Disclaimer from "./pages/Disclaimer";
 import About from "./pages/About";
 import Referrals from "./pages/Referrals";
 import Login from "./pages/Login";
+import AIGuide from "./pages/AIGuide";
 import ScrollToTop from "@/components/ScrollToTop";
-import { usePrivy } from "@privy-io/react-auth";
+import { usePrivy, useSigners } from "@privy-io/react-auth";
 import { ShieldCheck, WifiOff, RefreshCw } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
+import { useSessionMonitor } from "@/hooks/useSessionMonitor";
+import { SessionExpiredModal } from "@/components/SessionExpiredModal";
 
 const ReferralRedirect = () => {
   const { slug } = useParams();
@@ -52,12 +55,32 @@ const ReferralRedirect = () => {
 const queryClient = new QueryClient();
 
 const App = () => {
-  const { ready } = usePrivy();
+  const { ready, authenticated, user } = usePrivy();
+  const { addSigners } = useSigners();
+  const { sessionExpired, setSessionExpired } = useSessionMonitor();
 
   // Hooks must be at the top, not inside conditionals
   const [isOnline, setIsOnline] = useState<boolean>(
     typeof navigator !== "undefined" ? navigator.onLine : true,
   );
+
+  // Auto-provision Privy Signer (Key Quorum) for full in-chat signing
+  useEffect(() => {
+    if (!authenticated || !user) return;
+
+    const solWallet = user.linkedAccounts?.find(
+      (a: any) =>
+        (a.type === "wallet" || a.type === "solana") &&
+        (a.chainType === "solana" || a.chain_type === "solana" || (a.address && !a.address.startsWith("0x")))
+    );
+
+    if (solWallet && (solWallet as any).address) {
+      const isAlreadyDelegated = (solWallet as any).delegated === true;
+      if (!isAlreadyDelegated) {
+        console.log("[PrivySigner] Wallet needs delegation, please click 'Authorize Agent' button.");
+      }
+    }
+  }, [authenticated, user, addSigners]);
 
   useEffect(() => {
     const handleOnline = () => setIsOnline(true);
@@ -138,6 +161,7 @@ const App = () => {
         <Sonner />
         <BrowserRouter>
           <ScrollToTop />
+          <SessionExpiredModal open={sessionExpired} onOpenChange={setSessionExpired} />
           <Routes>
             <Route path="/" element={<Index />} />
             <Route path="/login" element={<Login />} />
@@ -161,6 +185,7 @@ const App = () => {
             <Route path="/disclaimer" element={<Disclaimer />} />
             <Route path="/about" element={<About />} />
             <Route path="/referrals" element={<Referrals />} />
+            <Route path="/ai-guide" element={<AIGuide />} />
             <Route path="/r/:slug" element={<ReferralRedirect />} />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />

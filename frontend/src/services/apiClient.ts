@@ -37,8 +37,21 @@ export const apiUrl = (path: string): string => {
   return `/api${normalised}`;
 };
 
-export const apiFetch = (path: string, init?: RequestInit): Promise<Response> =>
-  fetch(apiUrl(path), init);
+export const apiFetch = async (
+  path: string,
+  init?: RequestInit,
+): Promise<Response> => {
+  const response = await fetch(apiUrl(path), init);
+
+  // Dispatch custom event on 401 so session monitor can trigger reconnect modal
+  if (response.status === 401) {
+    window.dispatchEvent(
+      new CustomEvent("api:unauthorized", { detail: { status: 401 } }),
+    );
+  }
+
+  return response;
+};
 
 /**
  * Builds a fully-qualified URL for a PAJ Ramp webhook path.

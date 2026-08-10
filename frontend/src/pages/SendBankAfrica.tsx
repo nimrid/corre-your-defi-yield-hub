@@ -49,6 +49,10 @@ const SendBankAfrica = () => {
   const [rateLoading, setRateLoading] = useState(true);
   const [estimatedNaira, setEstimatedNaira] = useState<string>("");
   const [estimating, setEstimating] = useState(false);
+  const [walletUsdcBalance, setWalletUsdcBalance] = useState<number | null>(null);
+  const [balanceLoading, setBalanceLoading] = useState(false);
+
+  const PAJ_OFFRAMP_FEE = 0.5;
 
   // Bank selection dialog state
   const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -89,6 +93,37 @@ const SendBankAfrica = () => {
   } | null>(null);
 
   useEffect(() => {
+    const fetchWalletUsdcBalance = async () => {
+      const selectedWallet = wallets.find(
+        (w) => (w as any).walletClientType === "solana" || (w as any).chainType === "solana"
+      ) || wallets[0];
+
+      if (!selectedWallet?.address) return;
+
+      setBalanceLoading(true);
+      try {
+        const { Connection, PublicKey } = await import("@solana/web3.js");
+        const rawSolanaRpc = import.meta.env.VITE_SOLANA_RPC ?? "https://solana-mainnet.g.alchemy.com/v2/C5-LCLXSwlCEtsquSDPIj";
+        const SOLANA_RPC = rawSolanaRpc.replace(/^['"]|['"]$/g, "").trim();
+        const connection = new Connection(SOLANA_RPC, "confirmed");
+        const owner = new PublicKey(selectedWallet.address);
+        const usdcMintPk = new PublicKey(USDC_MINT);
+        const resp = await connection.getParsedTokenAccountsByOwner(owner, { mint: usdcMintPk });
+        const totalBalance = resp.value.reduce((sum, acc: any) => {
+          const amt = acc?.account?.data?.parsed?.info?.tokenAmount?.uiAmount ?? 0;
+          return sum + Number(amt || 0);
+        }, 0);
+        setWalletUsdcBalance(totalBalance);
+      } catch (err) {
+        console.error("Failed to fetch wallet USDC balance:", err);
+      } finally {
+        setBalanceLoading(false);
+      }
+    };
+    fetchWalletUsdcBalance();
+  }, [wallets]);
+
+  useEffect(() => {
     const fetchBaseRate = async () => {
       try {
         const rateData = await getRateByType(RateType.offRamp);
@@ -112,13 +147,22 @@ const SendBankAfrica = () => {
     }
     setEstimating(true);
     if (baseRate) {
-      setEstimatedNaira((numAmount * baseRate).toFixed(2));
+      const netUSDC = Math.max(0, numAmount - PAJ_OFFRAMP_FEE);
+      setEstimatedNaira((netUSDC * baseRate).toFixed(2));
     }
     setEstimating(false);
   }, [amountUSDC, baseRate]);
 
+  const numUSDC = Number(amountUSDC);
+  const isExceedingBalance = walletUsdcBalance !== null && numUSDC > walletUsdcBalance;
+  const isBelowMinimum = numUSDC > 0 && numUSDC <= PAJ_OFFRAMP_FEE;
+
   const handleOpenDialog = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    if (isExceedingBalance || isBelowMinimum) {
+      return;
+    }
     
     // Request session token first if needed
     let token = sessionToken;
@@ -527,8 +571,6 @@ const SendBankAfrica = () => {
     }
   };
 
-  const numUSDC = Number(amountUSDC);
-
   return (
     <div className="min-h-screen bg-background text-foreground">
       <Navigation />
@@ -563,41 +605,91 @@ const SendBankAfrica = () => {
         <div className="glass-card p-6 md:p-8 rounded-2xl max-w-md">
           <form onSubmit={handleOpenDialog} className="space-y-6">
             <div className="space-y-2">
-              <label htmlFor="amount" className="block text-sm font-medium">
-                Amount (USDC)
-              </label>
+              <div className="flex justify-between items-center">
+                <label htmlFor="amount" className="block text-sm font-medium">
+                  Amount (USDC)
+                </label>
+                <div className="text-xs text-muted-foreground flex items-center gap-1.5">
+                  <span>Balance:</span>
+                  <span className="font-semibold text-foreground">
+                    {balanceLoading ? (
+                      <Loader2 className="w-3 h-3 animate-spin inline" />
+                    ) : walletUsdcBalance !== null ? (
+                      `${walletUsdcBalance.toLocaleString(undefined, { maximumFractionDigits: 4 })} USDC`
+                    ) : (
+                      "0.00 USDC"
+                    )}
+                  </span>
+                  {walletUsdcBalance !== null && walletUsdcBalance > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setAmountUSDC(walletUsdcBalance.toString())}
+                      className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-primary/10 text-primary hover:bg-primary/20 transition-colors uppercase ml-1"
+                    >
+                      MAX
+                    </button>
+                  )}
+                </div>
+              </div>
               <div className="relative">
                 <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">$</span>
                 <input
                   id="amount"
                   type="number"
-                  min="0.01"
+                  min="0.51"
                   step="0.01"
                   required
                   placeholder="e.g. 10.50"
-                  className="w-full bg-secondary/50 border border-border/80 rounded-xl py-3 pl-8 pr-4 text-foreground focus:outline-none focus:ring-2 focus:ring-primary shadow-sm"
+                  className={`w-full bg-secondary/50 border rounded-xl py-3 pl-8 pr-4 text-foreground focus:outline-none focus:ring-2 shadow-sm ${
+                    isExceedingBalance || isBelowMinimum
+                      ? "border-red-500/80 focus:ring-red-500"
+                      : "border-border/80 focus:ring-primary"
+                  }`}
                   value={amountUSDC}
                   onChange={(e) => setAmountUSDC(e.target.value)}
                 />
               </div>
-              <div className="flex justify-between items-center mt-2">
-                <div className="text-xs text-muted-foreground">
-                  {rateLoading ? (
-                    <span className="flex items-center gap-1"><Loader2 className="w-3 h-3 animate-spin" /> Fetching rate...</span>
-                  ) : baseRate ? (
-                    <span>Rate: $1 = ₦{baseRate.toLocaleString()}</span>
-                  ) : (
-                    <span>Rate unavailable</span>
-                  )}
+
+              {isExceedingBalance && (
+                <p className="text-xs text-red-500 font-medium mt-1">
+                  Amount exceeds your available balance of {walletUsdcBalance?.toLocaleString()} USDC.
+                </p>
+              )}
+
+              {isBelowMinimum && (
+                <p className="text-xs text-amber-500 font-medium mt-1">
+                  Amount must be greater than the 0.50 USDC platform fee.
+                </p>
+              )}
+
+              <div className="space-y-1.5 mt-3 pt-2 border-t border-border/40 text-xs">
+                <div className="flex justify-between items-center text-muted-foreground">
+                  <span>Exchange Rate:</span>
+                  <span className="font-medium text-foreground">
+                    {rateLoading ? (
+                      <Loader2 className="w-3 h-3 animate-spin inline" />
+                    ) : baseRate ? (
+                      `$1 = ₦${baseRate.toLocaleString()}`
+                    ) : (
+                      "Rate unavailable"
+                    )}
+                  </span>
                 </div>
-                <div className="text-xs text-muted-foreground text-right font-medium">
-                  {estimating ? (
-                    <span className="flex items-center gap-1"><Loader2 className="w-3 h-3 animate-spin" /> Estimating...</span>
-                  ) : estimatedNaira ? (
-                    <span className="text-primary">Estimated: ~₦{Number(estimatedNaira).toLocaleString()}</span>
-                  ) : (
-                    <span>Estimated: ~₦0.00</span>
-                  )}
+                <div className="flex justify-between items-center text-muted-foreground">
+                  <span>Platform Fee:</span>
+                  <span className="font-semibold text-foreground">0.50 USDC</span>
+                </div>
+                <div className="flex justify-between items-center text-muted-foreground pt-1 border-t border-border/20">
+                  <span>Estimated Payout:</span>
+                  <span className="font-bold text-primary text-sm">
+                    {estimating ? (
+                      <Loader2 className="w-3 h-3 animate-spin inline" />
+                    ) : estimatedNaira ? (
+                      `~₦${Number(estimatedNaira).toLocaleString()}`
+                    ) : (
+                      "~₦0.00"
+                    )}
+                  </span>
                 </div>
               </div>
             </div>
@@ -605,7 +697,7 @@ const SendBankAfrica = () => {
             <Button
               type="submit"
               className="w-full py-6 text-lg rounded-xl flex items-center gap-2"
-              disabled={!amountUSDC || numUSDC <= 0}
+              disabled={!amountUSDC || numUSDC <= 0 || isExceedingBalance || isBelowMinimum}
             >
               <Send className="w-5 h-5" />
               Send to Bank Account
@@ -817,20 +909,41 @@ const SendBankAfrica = () => {
             {!orderSuccess ? (
               <>
                 {/* Summary card */}
-                <div className="rounded-xl border border-border/60 bg-secondary/30 p-4 space-y-3 my-2">
+                <div className="rounded-xl border border-border/60 bg-secondary/30 p-4 space-y-2.5 my-2 text-xs">
                   <div className="flex justify-between items-center">
-                    <span className="text-xs text-muted-foreground">You send</span>
-                    <span className="font-bold text-lg text-foreground">{numUSDC} USDC</span>
+                    <span className="text-muted-foreground">Amount to send</span>
+                    <span className="font-bold text-base text-foreground">{numUSDC} USDC</span>
                   </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-xs text-muted-foreground">Estimated payout</span>
-                    <span className="font-semibold text-primary">
+
+                  <div className="flex justify-between items-center text-muted-foreground">
+                    <span>Platform Fee</span>
+                    <span className="font-semibold text-foreground">0.50 USDC</span>
+                  </div>
+
+                  <div className="flex justify-between items-center text-muted-foreground">
+                    <span>Net USDC Exchanged</span>
+                    <span className="font-semibold text-foreground">
+                      {Math.max(0, numUSDC - 0.5).toFixed(2)} USDC
+                    </span>
+                  </div>
+
+                  {baseRate && (
+                    <div className="flex justify-between items-center text-muted-foreground">
+                      <span>Exchange Rate</span>
+                      <span className="font-medium text-foreground">$1 = ₦{baseRate.toLocaleString()}</span>
+                    </div>
+                  )}
+
+                  <div className="flex justify-between items-center border-t border-border/40 pt-2 font-semibold">
+                    <span className="text-muted-foreground">Estimated payout</span>
+                    <span className="text-sm text-primary font-bold">
                       ~₦{estimatedNaira ? Number(estimatedNaira).toLocaleString() : "—"}
                     </span>
                   </div>
-                  <div className="border-t border-border/40 pt-3 space-y-2">
-                    <p className="text-xs text-muted-foreground font-medium">Recipient account</p>
-                    <div className="space-y-1">
+
+                  <div className="border-t border-border/40 pt-2.5 space-y-1">
+                    <p className="text-[11px] text-muted-foreground uppercase font-semibold tracking-wider">Recipient Account</p>
+                    <div className="space-y-0.5">
                       <p className="text-sm font-semibold">{confirmAccount?.accountName}</p>
                       <p className="text-xs text-muted-foreground">{confirmAccount?.bank}</p>
                       <p className="text-xs font-mono text-muted-foreground">{confirmAccount?.accountNumber}</p>

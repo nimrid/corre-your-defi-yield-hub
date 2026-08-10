@@ -1,6 +1,7 @@
 import Navigation from "@/components/Navigation";
 import StockHeatmapWidget from "@/components/StockHeatmapWidget";
 import StockAdvisor from "@/components/StockAdvisor";
+import MCPAgentBanner from "@/components/MCPAgentBanner";
 import { ArrowLeft, Grid3X3 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
@@ -123,6 +124,8 @@ const InvestUSStocks = () => {
               Browse tokenized US stocks available on Solana.
             </p>
           </div>
+
+          <MCPAgentBanner />
 
           <StockAdvisor />
 

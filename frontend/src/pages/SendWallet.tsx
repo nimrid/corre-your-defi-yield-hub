@@ -18,6 +18,7 @@ import {
   useWallets as useSolanaWallets,
 } from "@privy-io/react-auth/solana";
 import { useInvalidateTransactionHistory } from "@/hooks/useTransactionHistory";
+import { apiFetch } from "@/services/apiClient";
 
 const USDC_MINT = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"; // Solana USDC
 

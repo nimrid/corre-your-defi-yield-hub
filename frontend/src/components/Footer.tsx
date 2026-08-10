@@ -20,6 +20,7 @@ const Footer = () => {
             <h4 className="font-semibold mb-4">Company</h4>
             <ul className="space-y-2 text-sm text-muted-foreground">
               <li><Link to="/about" className="hover:text-foreground transition-colors">About</Link></li>
+              <li><Link to="/ai-guide" className="hover:text-foreground transition-colors">AI Agents</Link></li>
               <li><a href="https://t.me/+_ExsYWddoeNmZTA0" target="_blank" rel="noopener noreferrer" className="hover:text-foreground transition-colors">Community</a></li>
             </ul>
           </div>

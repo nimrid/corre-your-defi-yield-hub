@@ -33,26 +33,28 @@ const SendBank = () => {
             <p className="text-xs sm:text-sm text-muted-foreground">
               Choose your preferred off-ramp method:
             </p>
-            <Button
-              type="button"
-              size="lg"
-              className="mt-2 inline-flex items-center gap-2 rounded-full px-5 py-2.5 text-sm font-semibold"
-              onClick={() => navigate("/send/bank/africa")}
-            >
-              <BanknoteIcon className="w-4 h-4" />
-              Nigeria bank off-ramp
-            </Button>
+            <div className="flex flex-wrap items-center gap-3 sm:gap-4 pt-2">
+              <Button
+                type="button"
+                size="lg"
+                className="inline-flex items-center gap-2 rounded-full px-5 py-2.5 text-sm font-semibold"
+                onClick={() => navigate("/send/bank/africa")}
+              >
+                <BanknoteIcon className="w-4 h-4" />
+                Nigeria bank off-ramp
+              </Button>
 
-            <Button
-              type="button"
-              size="lg"
-              className="mt-2 inline-flex items-center gap-2 rounded-full px-5 py-2.5 text-sm font-semibold"
-              
-            >
-              <BanknoteIcon className="w-4 h-4" />
-              Global bank off-ramp (coming soon)
-            </Button>
-
+              <Button
+                type="button"
+                size="lg"
+                variant="outline"
+                disabled
+                className="inline-flex items-center gap-2 rounded-full px-5 py-2.5 text-sm font-semibold opacity-70"
+              >
+                <BanknoteIcon className="w-4 h-4" />
+                Global bank off-ramp (coming soon)
+              </Button>
+            </div>
           </div>
         </div>
       </main>

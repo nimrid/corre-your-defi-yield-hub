@@ -23,7 +23,22 @@ const resources = {
         receive_stablecoin: "Receive Stablecoin",
         receive_stablecoin_desc: "Send USDC directly to your Solana wallet.",
         solana_wallet_address: "Solana Wallet Address",
-        no_solana_wallet: "No Solana wallet connected."
+        no_solana_wallet: "No Solana wallet connected.",
+        buy_with_card: "Buy with Card (Global)",
+        buy_with_card_desc: "Buy USDC globally using Card, Apple Pay, or Google Pay in USD, EUR, GBP & 45+ currencies.",
+        global_onramp_title: "Global Fiat Onramp",
+        global_onramp_subtitle: "Instant purchase via Stripe, MoonPay, Coinbase & Meld",
+        select_destination_chain: "Select Destination Wallet",
+        solana_network: "Solana Network",
+        base_network: "Base (EVM) Network",
+        launch_onramp: "Buy USDC via Card",
+        starting_onramp: "Launching Onramp...",
+        purchase_confirmed: "Purchase Confirmed!",
+        purchase_confirmed_desc: "Your USDC purchase has been successfully processed and delivered to your wallet.",
+        purchase_submitted: "Purchase Submitted",
+        purchase_submitted_desc: "Your transaction has been submitted and is currently being processed by the payment provider.",
+        onramp_failed: "Onramp Failed",
+        onramp_failed_desc: "Unable to complete fiat onramp. Please try again or choose another payment method."
       }
     }
   }

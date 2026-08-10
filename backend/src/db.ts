@@ -17,7 +17,7 @@ const MAX_CONNECTIONS = parseInt(process.env.DB_POOL_MAX ?? "20", 10);
 
 export const pool = new Pool({
   connectionString,
-  ssl: { rejectUnauthorized: false },
+  ssl: { rejectUnauthorized: true },
 
   max: MAX_CONNECTIONS,
 

@@ -198,6 +198,30 @@ export async function runMigrations(): Promise<void> {
        created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
      )`,
 
+    `CREATE TABLE IF NOT EXISTS stock_limit_orders (
+       id                SERIAL PRIMARY KEY,
+       user_id           INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+       stock_mint        TEXT NOT NULL,
+       stock_symbol      TEXT NOT NULL,
+       action            TEXT NOT NULL,
+       target_price_usd  NUMERIC NOT NULL,
+       usdc_amount       NUMERIC NOT NULL,
+       status            TEXT NOT NULL DEFAULT 'ACTIVE',
+       created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
+     )`,
+
+    `CREATE TABLE IF NOT EXISTS stock_dca_schedules (
+       id                SERIAL PRIMARY KEY,
+       user_id           INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+       stock_mint        TEXT NOT NULL,
+       stock_symbol      TEXT NOT NULL,
+       usdc_amount       NUMERIC NOT NULL,
+       frequency         TEXT NOT NULL,
+       status            TEXT NOT NULL DEFAULT 'ACTIVE',
+       last_executed_at  TIMESTAMPTZ,
+       created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
+     )`,
+
 
     // ── Column additions (idempotent via ADD COLUMN IF NOT EXISTS) ───────────
     `ALTER TABLE users

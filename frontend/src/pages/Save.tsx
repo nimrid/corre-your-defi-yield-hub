@@ -1,7 +1,7 @@
 import Navigation from "@/components/Navigation";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { ArrowLeft, Calculator, TrendingUp } from "lucide-react";
+import { ArrowLeft, ArrowRight, Calculator, TrendingUp, PiggyBank, ShieldCheck, Sparkles } from "lucide-react";
 import { formatApy, calculateYieldAmount } from "@/utils/yieldCalculations";
 
 interface PoolInfo {
@@ -93,61 +93,96 @@ const Save = () => {
           <span>Back</span>
         </button>
 
-        <div className="glass-card p-6 sm:p-8 rounded-2xl space-y-6">
-          <div className="space-y-2">
-            <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">
-              Save
-            </h1>
-            <p className="text-sm text-muted-foreground">
-              Available saving options to earn yields.
-            </p>
+        <div className="space-y-3">
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-primary/10 text-primary text-xs font-medium border border-primary/20">
+            <Sparkles className="w-3.5 h-3.5" />
+            <span>High-Yield DeFi Vaults</span>
           </div>
+          <h1 className="text-3xl font-bold tracking-tight">Save & Earn</h1>
+          <p className="text-muted-foreground">
+            Select a high-yield USDC savings option below to start earning automated APY interest.
+          </p>
+        </div>
 
-          {loading && (
-            <p className="text-sm text-muted-foreground">Loading pools...</p>
-          )}
+        {loading && (
+          <p className="text-sm text-muted-foreground">Loading pools...</p>
+        )}
 
-          {error && !loading && (
-            <p className="text-sm text-red-500">{error}</p>
-          )}
+        {error && !loading && (
+          <p className="text-sm text-red-500">{error}</p>
+        )}
 
-          {!loading && !error && (
-            <div className="space-y-8">
-              <div className="grid gap-4 md:grid-cols-2">
-                <div className="glass-card p-4 rounded-xl border border-border/60 flex flex-col justify-between">
-                  <h2 className="text-lg font-semibold mb-1">Standard</h2>
-                  <p className="text-sm text-muted-foreground mb-3">
-                    Standard saving with variable APY.
-                  </p>
-                  <p className="text-2xl font-bold mb-4">
-                    {formatApy(regular?.apy)}
-                  </p>
-                  <button
-                    type="button"
-                    className="mt-auto inline-flex items-center justify-center rounded-full bg-primary text-primary-foreground px-4 py-2 text-sm font-medium hover:opacity-90 transition"
-                    onClick={() => navigate("/save/regular")}
-                  >
-                    Standard vault
-                  </button>
+        {!loading && !error && (
+          <div className="space-y-8">
+            <div className="grid gap-6 md:grid-cols-2">
+              {/* Standard Vault Card */}
+              <div
+                onClick={() => navigate("/save/regular")}
+                className="glass-card p-6 text-left rounded-2xl hover:shadow-xl transition-all duration-300 hover:-translate-y-1 cursor-pointer flex flex-col justify-between border border-border/60 hover:border-primary/50 relative overflow-hidden group"
+              >
+                <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity pointer-events-none">
+                  <PiggyBank className="w-28 h-28 text-primary" />
                 </div>
 
-                <div className="glass-card p-4 rounded-xl border border-border/60 flex flex-col justify-between">
-                  <h2 className="text-lg font-semibold mb-1">Shielded</h2>
-                  <p className="text-sm text-muted-foreground mb-3">
-                    Shielded saving option with its own APY.
-                  </p>
-                  <p className="text-2xl font-bold mb-4">
-                    {formatApy(protectedPool?.apy)}
-                  </p>
-                  <button
-                    type="button"
-                    className="mt-auto inline-flex items-center justify-center rounded-full bg-primary text-primary-foreground px-4 py-2 text-sm font-medium hover:opacity-90 transition"
-                    onClick={() => navigate("/save/protected")}
-                  >
-                    Shielded vault
-                  </button>
+                <div className="space-y-4 relative z-10">
+                  <div className="flex items-center justify-between">
+                    <div className="w-12 h-12 rounded-xl bg-primary/10 text-primary flex items-center justify-center border border-primary/20">
+                      <PiggyBank className="w-6 h-6 text-primary" />
+                    </div>
+                    <div className="px-3 py-1 rounded-full bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 font-bold text-sm flex items-center gap-1">
+                      <TrendingUp className="w-3.5 h-3.5" />
+                      <span>{formatApy(regular?.apy)} APY</span>
+                    </div>
+                  </div>
+
+                  <div>
+                    <h2 className="text-xl font-bold mb-1 group-hover:text-primary transition-colors">Standard Vault</h2>
+                    <p className="text-xs text-muted-foreground leading-relaxed">
+                      Standard USDC savings vault with dynamic, variable yield interest.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="mt-6 pt-4 border-t border-border/40 flex items-center justify-between text-xs font-semibold text-primary group-hover:translate-x-1 transition-transform relative z-10">
+                  <span>Deposit & Earn</span>
+                  <ArrowRight className="w-4 h-4" />
                 </div>
               </div>
+
+              {/* Shielded Vault Card */}
+              <div
+                onClick={() => navigate("/save/protected")}
+                className="glass-card p-6 text-left rounded-2xl hover:shadow-xl transition-all duration-300 hover:-translate-y-1 cursor-pointer flex flex-col justify-between border border-border/60 hover:border-primary/50 relative overflow-hidden group"
+              >
+                <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity pointer-events-none">
+                  <ShieldCheck className="w-28 h-28 text-primary" />
+                </div>
+
+                <div className="space-y-4 relative z-10">
+                  <div className="flex items-center justify-between">
+                    <div className="w-12 h-12 rounded-xl bg-primary/10 text-primary flex items-center justify-center border border-primary/20">
+                      <ShieldCheck className="w-6 h-6 text-primary" />
+                    </div>
+                    <div className="px-3 py-1 rounded-full bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 font-bold text-sm flex items-center gap-1">
+                      <TrendingUp className="w-3.5 h-3.5" />
+                      <span>{formatApy(protectedPool?.apy)} APY</span>
+                    </div>
+                  </div>
+
+                  <div>
+                    <h2 className="text-xl font-bold mb-1 group-hover:text-primary transition-colors">Shielded Vault</h2>
+                    <p className="text-xs text-muted-foreground leading-relaxed">
+                      Protected savings option with dedicated yield insurance coverage.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="mt-6 pt-4 border-t border-border/40 flex items-center justify-between text-xs font-semibold text-primary group-hover:translate-x-1 transition-transform relative z-10">
+                  <span>Deposit & Protect</span>
+                  <ArrowRight className="w-4 h-4" />
+                </div>
+              </div>
+            </div>
 
               {/* Yield Estimator */}
               <div className="glass-card p-6 sm:p-8 rounded-2xl border border-border/60 focus-within:ring-2 focus-within:ring-primary/20 transition-all">
@@ -241,7 +276,6 @@ const Save = () => {
               </div>
             </div>
           )}
-        </div>
       </main>
     </div>
   );

@@ -60,9 +60,12 @@ export async function checkGasSponsorship(req: Request, res: Response) {
     return res.json(responseData);
   } catch (err) {
     console.error("Error checking gas sponsorship eligibility:", err);
+    // Fail closed on sponsorship (don't spend fee payer funds we couldn't vet)
+    // while still letting the user proceed paying their own gas.
     return res.json({
       allowed: true,
-      reason: "Eligibility check unavailable, proceeding with caution",
+      sponsorshipAllowed: false,
+      reason: "Eligibility check unavailable — gas sponsorship disabled for this transaction",
     });
   }
 }
@@ -127,10 +130,26 @@ export async function getGasSponsorshipStats(_req: Request, res: Response) {
  */
 export async function sponsorTransaction(req: Request, res: Response) {
   try {
-    const { transaction: serializedTransaction } = req.body;
+    const { transaction: serializedTransaction } = req.body ?? {};
 
-    if (!serializedTransaction) {
+    // ── Input validation ───────────────────────────────────────────────────
+    if (typeof serializedTransaction !== "string" || !serializedTransaction) {
       return res.status(400).json({ error: 'Missing transaction data' });
+    }
+    // Reject anything that isn't plausibly a base64 transaction, and cap the
+    // size so we never hand a giant/garbage buffer to the deserializer.
+    if (serializedTransaction.length > 8192 || !/^[A-Za-z0-9+/=]+$/.test(serializedTransaction)) {
+      return res.status(400).json({ error: 'Malformed transaction data' });
+    }
+
+    // ── Circuit breaker kill-switch ────────────────────────────────────────
+    // Lets us instantly halt ALL gas sponsorship (e.g. on detected fee-payer
+    // drain) without a redeploy, by inserting an active breaker row. When no
+    // breaker is set (the normal case) this is a no-op.
+    const breaker = await checkCircuitBreaker();
+    if (!breaker.enabled) {
+      console.warn("[GasSponsor] Refusing to sponsor — circuit breaker active:", breaker.reason);
+      return res.status(503).json({ error: breaker.reason || "Gas sponsorship temporarily disabled" });
     }
 
     const { Keypair, VersionedTransaction, Connection } = await import("@solana/web3.js");

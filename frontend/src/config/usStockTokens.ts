@@ -11,6 +11,8 @@ export const US_STOCK_TOKENS: USStockTokenConfig[] = [
   { mint: "PrekqLJvJ3qVdXmBGDiexvwUTF4rLFDa6HWS4HJbw9S", name: "NEURALINK", symbol: "NEURALINK" },
   { mint: "Xs3oZwbHvqis4NYcf4YKWmEia2eC84wSiVrcYcTqpH8", name: "SPCXx", symbol: "SPCXx" },
   { mint: "XsQLZycSZ7QnBBdBXQaTbQdiUcbRqjNJgyBGAMzhHav", name: "MUx", symbol: "MUx" },
+  { mint: "XspzcW1PRtgf6Wj92HCiZdjzKCyFekVD8P5Ueh3dRMX", name: "Microsoft", symbol: "MSFTx" },
+  { mint: "XsEH7wWfJJu2ZT3UCFeVfALnVA6CP5ur7Ee11KmzVpL", name: "NETFLIX", symbol: "NFLXx" },
 
   { mint: "XsP7xzNPvEHS1m6qfanPUGjNmdnmsLKEoNAnHjdxxyZ", name: "MSTRx", symbol: "MSTRX" },
   { mint: "XsoCS1TfEyfFhfvj8EtZ528L3CaKBDBRqRapnBbDF2W", name: "S&P 500", symbol: "SP500" },
@@ -61,6 +63,10 @@ export const US_STOCK_TOKENS: USStockTokenConfig[] = [
   { mint: "XsApJFV9MAktqnAc6jqzsHVujxkGm9xcSUffaBoYLKC", name: "Mastercard", symbol: "MA" },
   { mint: "Pren1FvFX6J3E4kXhJuCiAD5aDmGEb7qJRncwA8Lkhw", name: "ANTHROPIC", symbol: "ANTHROPIC" },
   { mint: "BoTx8y9ynfdxf5ZjWtCoBVkff52qKA82ysaLU8ZM6d8T", name: "RoboStrategy - Backpack Securities", symbol: "BOT" },
+  { mint: "SKHYhSjuRWHgikq8eRKbtBbpABgJSkd7ytQV14i9EQ3", name: "SK HYNIX", symbol: "SKHY" },
+  { mint: "TTWofwAge91oFhZs7kpQdyrVRkmevgM88xijGvQFbKo", name: "Take-Two interactive software", symbol: "TTWO" },
+  { mint: "SNDKbwMUQvZhnLnxLduradgLHG5KrPuKwpnrkkGRhfH", name: "Sandisk", symbol: "SNDK" },
+  { mint: "DRAMjSWR7HRfJKjRkvQWYL2bcaejaVhuxEcjf4pAY4Cw", name: "Roundhill memory ETF", symbol: "DRAM" },
 
 
 

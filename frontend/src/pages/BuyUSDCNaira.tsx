@@ -213,6 +213,12 @@ const BuyUSDCNaira = () => {
                                         )}
                                     </div>
                                 </div>
+                                {baseRate && Number(amountNaira) >= 1000 && (
+                                    <div className="bg-secondary/40 rounded-lg p-2.5 mt-3 text-xs flex justify-between items-center text-muted-foreground border border-border/40">
+                                        <span>Platform Fee:</span>
+                                        <span className="font-semibold text-foreground">0.50 USDC</span>
+                                    </div>
+                                )}
                                 {orderError && (
                                     <p className="text-sm text-red-500 mt-2">{orderError}</p>
                                 )}
@@ -263,6 +269,10 @@ const BuyUSDCNaira = () => {
                                             <Share className="w-4 h-4" />
                                         </button>
                                     </div>
+                                </div>
+                                <div className="border-t border-border/40 pt-3 flex justify-between items-center text-xs">
+                                    <span className="text-muted-foreground">Platform Fee</span>
+                                    <span className="font-medium">{order.fee ?? 0.5} USDC</span>
                                 </div>
                             </div>
 

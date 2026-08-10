@@ -24,6 +24,7 @@ import { TotalBalance } from "@/components/dashboard/BalanceComponents";
 import { WalletRow, LinkedWalletRow } from "@/components/dashboard/WalletComponents";
 import { TransactionHistory } from "@/components/dashboard/TransactionHistory";
 import { useTransactionHistory } from "@/hooks/useTransactionHistory";
+import MCPAgentBanner from "@/components/MCPAgentBanner";
 
 interface StockHolding {
   mint: string;
@@ -342,6 +343,8 @@ const Home = () => {
                 </div>
               </div>
             </div>
+
+            <MCPAgentBanner />
 
             <div className="glass-card p-6 order-3 md:order-3">
               <div className="flex items-center justify-between mb-4">

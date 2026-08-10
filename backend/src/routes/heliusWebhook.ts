@@ -18,6 +18,7 @@ interface TokenTransfer {
 
 interface Transaction {
   type: string;
+  signature?: string;
   tokenTransfers?: TokenTransfer[];
 }
 
@@ -26,24 +27,42 @@ interface HeliusWebhookPayload {
 }
 
 /**
- * Verify Helius webhook signature
+ * Verify a Helius webhook request.
+ *
+ * Helius does NOT sign webhook bodies (there is no HMAC / `x-helius-signature`).
+ * Instead it echoes back, verbatim in the `Authorization` header, whatever
+ * static `authHeader` string you configured when the webhook was created. So
+ * authenticity is a constant-time comparison of that header against our shared
+ * secret — verifying the parsed body is meaningless here.
+ *
+ * Behaviour:
+ *   • secret configured   → require Authorization === secret (fail CLOSED).
+ *   • secret NOT configured → warn loudly and allow, so deploying this code
+ *     alone never silently breaks live deposit crediting. Set
+ *     HELIUS_WEBHOOK_SECRET (and the matching authHeader on the Helius
+ *     dashboard) to activate enforcement.
  */
-function verifyHeliusSignature(req: Request, secret: string): boolean {
+function verifyHeliusAuth(req: Request, secret: string): boolean {
   if (!secret) {
-    console.warn('HELIUS_WEBHOOK_SECRET not configured, skipping signature verification');
+    console.warn(
+      '[Helius Webhook] HELIUS_WEBHOOK_SECRET not set — endpoint is UNAUTHENTICATED. ' +
+      'Set it and the matching authHeader in the Helius dashboard to enable verification.',
+    );
     return true;
   }
 
-  const signature = req.headers['x-helius-signature'] as string;
-  if (!signature) {
-    console.error('Missing x-helius-signature header');
+  const provided = (req.headers['authorization'] as string) || '';
+  const expected = secret;
+
+  const providedBuf = Buffer.from(provided);
+  const expectedBuf = Buffer.from(expected);
+
+  // timingSafeEqual throws on length mismatch — guard first so a wrong-length
+  // header is a clean reject rather than an exception.
+  if (providedBuf.length !== expectedBuf.length) {
     return false;
   }
-
-  const payload = JSON.stringify(req.body);
-  const hash = crypto.createHmac('sha256', secret).update(payload).digest('hex');
-
-  return hash === signature;
+  return crypto.timingSafeEqual(providedBuf, expectedBuf);
 }
 
 /**
@@ -58,6 +77,23 @@ async function updateUserUSDCBalance(
 
   try {
     await client.query('BEGIN');
+
+    // Idempotency guard: if we've already credited this exact signature via the
+    // Helius path, skip — Helius retries deliveries and may resend duplicates,
+    // which would otherwise double-credit the deposit.
+    if (txSignature) {
+      const existing = await client.query(
+        `SELECT 1 FROM savings_activity
+         WHERE tx_signature = $1 AND source = 'helius_webhook'
+         LIMIT 1`,
+        [txSignature],
+      );
+      if (existing.rows.length) {
+        console.log(`[Helius Webhook] Duplicate deposit ${txSignature} ignored (already credited)`);
+        await client.query('ROLLBACK');
+        return;
+      }
+    }
 
     // Find user by Solana wallet address
     const userResult = await client.query(
@@ -108,9 +144,9 @@ async function updateUserUSDCBalance(
  */
 router.post('/helius', async (req: Request, res: Response) => {
   try {
-    // Verify webhook signature
-    if (!verifyHeliusSignature(req, HELIUS_WEBHOOK_SECRET)) {
-      console.error('Invalid webhook signature');
+    // Verify webhook authenticity (static Authorization header echoed by Helius)
+    if (!verifyHeliusAuth(req, HELIUS_WEBHOOK_SECRET)) {
+      console.error('[Helius Webhook] Invalid or missing Authorization header');
       return res.status(401).json({ error: 'Unauthorized' });
     }
 
@@ -139,7 +175,7 @@ router.post('/helius', async (req: Request, res: Response) => {
           // Convert token amount to human-readable format (USDC has 6 decimals)
           const humanAmount = transfer.tokenAmount / Math.pow(10, transfer.tokenDecimals || 6);
 
-          await updateUserUSDCBalance(transfer.toUserAccount, humanAmount, '');
+          await updateUserUSDCBalance(transfer.toUserAccount, humanAmount, tx.signature || '');
 
           processedCount++;
         } catch (error) {
