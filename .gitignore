@@ -36,3 +36,4 @@ USDC_DEPOSIT_DISPLAY.md
 backend/*.cjs
 backend/src/test_save.ts
 backend/src/test-yield-email.ts
+backend/test-*.ts

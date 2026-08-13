@@ -68,7 +68,7 @@ export interface TransactionResult {
 
 export interface PendingTransaction {
   id: string;
-  type: "transfer" | "savings_deposit" | "savings_withdraw" | "stock_buy" | "stock_sell" | "rebalance";
+  type: "transfer" | "savings_deposit" | "savings_withdraw" | "stock_buy" | "stock_sell" | "rebalance" | "offramp";
   privyUserId: string;
   walletAddress: string;
   walletId: string;
@@ -81,6 +81,8 @@ export interface PendingTransaction {
   stockSymbol?: string;
   stockMint?: string;
   sharesAmount?: number;
+  // Offramp-specific
+  offrampOrderId?: string;
   // Metadata
   createdAt: number;
   executed: boolean;
@@ -224,10 +226,11 @@ async function getPrivyWalletDetails(
     const solWallets = pUser.linkedAccounts.filter(
       (a: any) =>
         (a.type === "wallet" || a.type === "solana") &&
-        ((a as any).chainType === "solana" || (a as any).chain_type === "solana" || ((a as any).address && !(a as any).chainType))
+        ((a as any).chainType === "solana" || (a as any).chain_type === "solana" || ((a as any).address && !(a as any).chainType)) &&
+        ((a as any).walletClientType === "privy" || (a as any).wallet_client_type === "privy")
     );
 
-    console.log(`[PrivyWallet] Found ${solWallets.length} Solana wallets for Privy user ${privyUserId}`);
+    console.log(`[PrivyWallet] Found ${solWallets.length} embedded Solana wallets for Privy user ${privyUserId}`);
 
     // Try case-insensitive address match first
     for (const w of solWallets) {
@@ -360,8 +363,8 @@ export async function buildUsdcTransferTx(
   const mintPubkey = new PublicKey(USDC_MINT);
   const payerPubkey = feePayerAddress ? new PublicKey(feePayerAddress) : senderPubkey;
 
-  const senderAta = await getAssociatedTokenAddress(mintPubkey, senderPubkey);
-  const recipientAta = await getAssociatedTokenAddress(mintPubkey, recipientPubkey);
+  const senderAta = await getAssociatedTokenAddress(mintPubkey, senderPubkey, true);
+  const recipientAta = await getAssociatedTokenAddress(mintPubkey, recipientPubkey, true);
 
   const rawAmount = BigInt(Math.round(usdcAmount * Math.pow(10, USDC_DECIMALS)));
 
@@ -724,24 +727,28 @@ export async function checkGasSponsorship(
   backendUrl: string
 ): Promise<{ sponsored: boolean; feePayerAddress?: string }> {
   try {
-    const res = await fetch(`${backendUrl}/gas-sponsorship/check`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ privyUserId, amountUSD }),
-    });
+    const { checkGasSponsorshipEligibility, checkCircuitBreaker } = await import("../middleware/gasSponsorship.js");
+    const circuitBreaker = await checkCircuitBreaker();
+    if (!circuitBreaker.enabled) {
+      return { sponsored: false };
+    }
 
-    if (!res.ok) return { sponsored: false };
+    const eligibility = await checkGasSponsorshipEligibility(privyUserId, amountUSD);
+    if (!eligibility.allowed || eligibility.sponsorshipAllowed === false) {
+      return { sponsored: false };
+    }
 
-    const data = await res.json();
-    if (!data.allowed) return { sponsored: false };
-
-    if (data.sponsorshipAllowed !== false && data.feePayerAddress) {
-      return { sponsored: true, feePayerAddress: data.feePayerAddress };
+    const feePayerKey = process.env.FEE_PAYER_PRIVATE_KEY;
+    if (feePayerKey) {
+      const { Keypair } = await import("@solana/web3.js");
+      const bs58 = (await import("bs58")).default;
+      const feePayerWallet = Keypair.fromSecretKey(bs58.decode(feePayerKey));
+      return { sponsored: true, feePayerAddress: feePayerWallet.publicKey.toBase58() };
     }
 
     return { sponsored: false };
   } catch (err) {
-    console.warn("[PrivyWallet] Gas sponsorship check failed:", err);
+    console.warn("[PrivyWallet] Gas sponsorship internal check failed:", err);
     return { sponsored: false };
   }
 }
@@ -847,6 +854,19 @@ export async function executePendingTransaction(
           USDC_MINT,
           shares,
           6
+        );
+        break;
+      }
+      case "offramp": {
+        if (!pending.recipientAddress) {
+          return { success: false, error: "Offramp deposit address missing from transaction. Please prepare a new offramp order." };
+        }
+        // Offramp sends USDC to the PAJ Ramp deposit address — identical to a standard USDC transfer
+        base64Tx = await buildUsdcTransferTx(
+          pending.walletAddress,
+          pending.recipientAddress,
+          pending.usdcAmount,
+          feePayerAddress
         );
         break;
       }
@@ -995,6 +1015,12 @@ async function recordTransaction(pending: PendingTransaction, txSignature: strin
         `INSERT INTO transactions (user_id, chain_type, asset_symbol, amount, direction, tx_signature, from_address, to_address, source)
          VALUES ($1, 'solana', $2, $3, 'incoming', $4, $5, $6, 'mcp_in_chat')`,
         [userId, pending.stockSymbol || "STOCK", (pending.sharesAmount || 1).toString(), txSignature, pending.walletAddress, "USDC"]
+      );
+    } else if (pending.type === "offramp") {
+      await pool.query(
+        `INSERT INTO transactions (user_id, chain_type, asset_symbol, amount, direction, tx_signature, from_address, to_address, source)
+         VALUES ($1, 'solana', 'USDC', $2, 'outgoing', $3, $4, $5, 'mcp_offramp')`,
+        [userId, pending.usdcAmount.toString(), txSignature, pending.walletAddress, pending.recipientAddress || 'paj_ramp_deposit']
       );
     }
   } catch (err) {

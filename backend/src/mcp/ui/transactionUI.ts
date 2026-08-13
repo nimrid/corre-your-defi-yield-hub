@@ -578,6 +578,12 @@ export function getTransactionUIHTML(appBaseUrl?: string): string {
         heroSub = '\\u2192 ' + (data.estimatedNairaReceived || 'Naira Bank Transfer');
         rows.push({ label: 'Payout Method', val: 'African Bank Transfer' });
         if (data.rateNgnPerUsdc) rows.push({ label: 'Rate', val: '\\u20a6' + (data.rateNgnPerUsdc || 0).toLocaleString() + ' / USDC' });
+        if (data.accountName) rows.push({ label: 'Account Name', val: data.accountName });
+        if (data.bankName) rows.push({ label: 'Bank', val: data.bankName });
+        if (data.accountNumber) rows.push({ label: 'Account No.', val: data.accountNumber, mono: true });
+        if (data.orderId) rows.push({ label: 'Order ID', val: truncateAddress(data.orderId), mono: true });
+        if (data.platformFee) rows.push({ label: 'Platform Fee', val: data.platformFee });
+        if (canExecuteInChat) rows.push({ label: 'Signing', val: 'In-Chat (Privy)', highlight: true });
         break;
 
       case 'transfer_prepared':

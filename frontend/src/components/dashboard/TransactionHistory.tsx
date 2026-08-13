@@ -49,6 +49,16 @@ const formatVaultLabel = (value: string): string => {
   return value;
 };
 
+const formatAmount = (val: string | number | undefined | null): string => {
+  if (val == null || val === "") return "0";
+  const num = typeof val === "number" ? val : parseFloat(String(val));
+  if (isNaN(num)) return String(val);
+  return num.toLocaleString("en-US", {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 6,
+  });
+};
+
 interface TransactionHistoryProps {
   transactions: TransactionRow[];
   savingsActivity: SavingsActivityRow[];
@@ -137,7 +147,7 @@ export const TransactionHistory = ({
                         <span className={tx.direction === "incoming" ? "text-emerald-500 font-bold" : "text-red-500 font-bold"}>
                           {tx.direction === "incoming" ? "Received" : "Sent"}
                         </span>
-                        <span className="font-mono text-base font-medium">{tx.amount} {tx.assetSymbol}</span>
+                        <span className="font-mono text-base font-medium">{formatAmount(tx.amount)} {tx.assetSymbol}</span>
                       </div>
                       <div className="text-xs text-muted-foreground opacity-80">
                         <div><span className="font-medium text-foreground/70">From:</span> {formatVaultLabel(tx.fromAddress)}</div>
@@ -159,7 +169,7 @@ export const TransactionHistory = ({
                         <span className={sa.direction === "deposit" ? "text-blue-500 font-bold" : "text-orange-500 font-bold"}>
                           {sa.direction === "deposit" ? "Savings Deposit" : "Savings Withdrawal"}
                         </span>
-                        <span className="font-mono text-base font-medium">{sa.amount} USDC</span>
+                        <span className="font-mono text-base font-medium">{formatAmount(sa.amount)} USDC</span>
                       </div>
                       <div className="text-xs text-muted-foreground opacity-80">
                         <span className="font-medium text-foreground/70">Vault:</span> {sa.vaultType === "regular" ? "Standard Yield" : "Shielded Yield"}
@@ -180,11 +190,11 @@ export const TransactionHistory = ({
                         <span className={isBuy ? "text-emerald-500 font-bold" : "text-orange-500 font-bold"}>
                           {isBuy ? "Bought USDC (Fiat)" : "Sold USDC (Fiat)"}
                         </span>
-                        <span className="font-mono text-base font-medium">{ft.usdcAmount ?? ft.amount} USDC</span>
+                        <span className="font-mono text-base font-medium">{formatAmount(ft.usdcAmount ?? ft.amount)} USDC</span>
                       </div>
                       <div className="text-xs text-muted-foreground opacity-80">
-                        <div><span className="font-medium text-foreground/70">Fiat Amount:</span> {(ft as any).currency ? `${(ft as any).currency} ` : "₦"}{(ft.fiatAmount ?? ft.amount)?.toLocaleString()}</div>
-                        {(ft as any).rate && <div><span className="font-medium text-foreground/70">Rate:</span> {(ft as any).rate} {(ft as any).currency || "NGN"}/USDC</div>}
+                        <div><span className="font-medium text-foreground/70">Fiat Amount:</span> {(ft as any).currency ? `${(ft as any).currency} ` : "₦"}{formatAmount(ft.fiatAmount ?? ft.amount)}</div>
+                        {(ft as any).rate && <div><span className="font-medium text-foreground/70">Rate:</span> {formatAmount((ft as any).rate)} {(ft as any).currency || "NGN"}/USDC</div>}
                         <div><span className="font-medium text-foreground/70">Status:</span> {ft.status}</div>
                       </div>
                     </div>
@@ -203,11 +213,11 @@ export const TransactionHistory = ({
                         <span className={sh.side === "buy" ? "text-purple-500 font-bold" : "text-rose-500 font-bold"}>
                           {sh.side === "buy" ? "Bought" : "Sold"} {sh.stockSymbol}
                         </span>
-                        <span className="font-mono text-base font-medium">{sh.usdcAmount} USDC</span>
+                        <span className="font-mono text-base font-medium">{formatAmount(sh.usdcAmount)} USDC</span>
                       </div>
                       <div className="text-xs text-muted-foreground opacity-80">
                         <div><span className="font-medium text-foreground/70">Asset:</span> {sh.stockName}</div>
-                        {sh.sharesAmount && <div><span className="font-medium text-foreground/70">Shares:</span> {sh.sharesAmount}</div>}
+                        {sh.sharesAmount && <div><span className="font-medium text-foreground/70">Shares:</span> {formatAmount(sh.sharesAmount)}</div>}
                       </div>
                     </div>
                     <div className="mt-2 sm:mt-0 sm:text-right text-xs text-muted-foreground space-y-1">

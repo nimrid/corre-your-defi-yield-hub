@@ -3,7 +3,6 @@ import { ArrowLeft } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
-import MCPAgentBanner from "@/components/MCPAgentBanner";
 
 const Invest = () => {
   const navigate = useNavigate();
@@ -45,7 +44,6 @@ const Invest = () => {
               </TabsTrigger>
             </TabsList>
             <TabsContent value="us-stocks" className="mt-6 space-y-4">
-              <MCPAgentBanner />
               <div className="glass-card p-5 sm:p-6 rounded-xl border border-border/60 flex flex-col gap-4">
                 <div className="space-y-1">
                   <h2 className="text-lg font-semibold">US stocks</h2>

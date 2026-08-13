@@ -72,6 +72,8 @@ export default defineConfig(({ mode }) => {
         ],
       },
       workbox: {
+        skipWaiting: true,
+        clientsClaim: true,
         maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
         runtimeCaching: [
           {
@@ -83,7 +85,7 @@ export default defineConfig(({ mode }) => {
           },
           {
             urlPattern: ({ request }) => request.destination === "script" || request.destination === "style",
-            handler: "StaleWhileRevalidate",
+            handler: "NetworkFirst",
             options: {
               cacheName: "static-resources",
             },

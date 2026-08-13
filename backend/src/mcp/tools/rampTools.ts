@@ -4,7 +4,10 @@ import { pool } from "../../db.js";
 import { resolveUserId } from "../../lib/dbHelpers.js";
 import { fetchLiveNairaRate } from "../helpers/rates.js";
 import { lookupUserWallet, storePendingTransaction, validateInChatAmount, generateTransactionId } from "../../services/privyWalletService.js";
+import { fetchSupportedBanks, resolveBank, saveBank, fetchSavedBankAccounts, createOfframp } from "../helpers/pajSession.js";
+import { Currency, Chain } from "paj_ramp";
 
+const USDC_MINT = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
 export const rampTools: MCPTool[] = [
   {
     definition: {
@@ -22,15 +25,16 @@ export const rampTools: MCPTool[] = [
       const { nairaAmount, usdcAmount } = args as { nairaAmount?: number; usdcAmount?: number };
 
       const rate = await fetchLiveNairaRate("onRamp");
+      const PAJ_FEE_USDC = 0.5;
 
       let calculatedUSDC: number | undefined;
       let calculatedNGN: number | undefined;
 
       if (nairaAmount) {
-        calculatedUSDC = Number((nairaAmount / rate).toFixed(2));
+        calculatedUSDC = Number(Math.max(0, (nairaAmount / rate) - PAJ_FEE_USDC).toFixed(2));
       }
       if (usdcAmount) {
-        calculatedNGN = Math.ceil(usdcAmount * rate);
+        calculatedNGN = Math.ceil((usdcAmount + PAJ_FEE_USDC) * rate);
       }
 
       return {
@@ -49,7 +53,7 @@ export const rampTools: MCPTool[] = [
                 targetUsdcInput: usdcAmount,
                 requiredNairaInput: calculatedNGN,
                 minNairaAmount: 1000,
-                feePolicy: "PAJ platform & network processing fees are automatically calculated and applied upon order creation.",
+                feePolicy: "0.50 USDC platform & network processing fee is included in these estimates.",
                 instructions: "You can purchase USDC directly using your local Naira bank account on Corre.",
               },
               null,
@@ -103,8 +107,9 @@ export const rampTools: MCPTool[] = [
       }
 
       const rate = await fetchLiveNairaRate("onRamp");
+      const PAJ_FEE_USDC = 0.5;
 
-      const estimatedUSDC = (nairaAmount / rate).toFixed(2);
+      const estimatedUSDC = Math.max(0, (nairaAmount / rate) - PAJ_FEE_USDC).toFixed(2);
       const deepLink = `${context.getAppBaseUrl()}/buy-usdc/naira?amount=${nairaAmount}`;
 
       const resObj = {
@@ -117,7 +122,7 @@ export const rampTools: MCPTool[] = [
         estimatedUsdcReceived: Number(estimatedUSDC),
         paymentMethod: "Local Bank Transfer",
         checkoutUrl: deepLink,
-        feePolicy: "PAJ platform & processing fees are calculated upon order creation on the checkout page.",
+        feePolicy: "0.50 USDC platform & network processing fee is included in the estimated amount.",
         instructions: `To complete buying ~$${estimatedUSDC} USDC with ₦${nairaAmount.toLocaleString()}, click here: ${deepLink}`,
       };
 
@@ -143,10 +148,11 @@ export const rampTools: MCPTool[] = [
       const { usdcAmount } = args as { usdcAmount?: number };
 
       const rate = await fetchLiveNairaRate("offRamp");
+      const PAJ_FEE_USDC = 0.5;
 
       let calculatedNaira: number | undefined;
       if (usdcAmount) {
-        calculatedNaira = Math.floor(usdcAmount * rate);
+        calculatedNaira = Math.floor(Math.max(0, usdcAmount - PAJ_FEE_USDC) * rate);
       }
 
       return {
@@ -164,8 +170,8 @@ export const rampTools: MCPTool[] = [
                 estimatedNairaReceived: calculatedNaira ? `₦${calculatedNaira.toLocaleString()}` : undefined,
                 rawNairaAmount: calculatedNaira,
                 supportedPayoutMethods: ["Local Bank Transfer (Nigeria / Africa)"],
-                feePolicy: "PAJ platform & network fees are calculated upon order creation on the checkout page.",
-                instructions: "You can withdraw your USDC directly into your local bank account on Corre.",
+                feePolicy: "0.50 USDC platform & network fee is subtracted before rate conversion.",
+                instructions: "If the user wants to proceed, DO NOT ask for bank details immediately. First, call get_saved_bank_accounts to see if they have saved accounts. If they do, ask which one to use. If not, guide them to save a bank account first.",
               },
               null,
               2
@@ -178,12 +184,14 @@ export const rampTools: MCPTool[] = [
   {
     definition: {
       name: "prepare_offramp_usdc",
-      description: "Prepare an offramp order intent to withdraw/sell USDC directly to a local bank account (Naira / African Bank Transfer) and generate checkout link",
+      description: "Prepare an offramp order intent to withdraw/sell USDC directly to a local bank account. IMPORTANT: Do NOT ask the user for bank details manually. Always call get_saved_bank_accounts first. If they have a saved account, use its bankId and accountNumber here. If not, help them save one first.",
       inputSchema: {
         type: "object",
         properties: {
           identifier: { type: "string", description: "User email address or Privy User ID" },
           usdcAmount: { type: "number", description: "Amount of USDC to sell/offramp" },
+          bankId: { type: "string", description: "Bank institution ID from get_supported_banks or get_saved_bank_accounts" },
+          accountNumber: { type: "string", description: "10-digit Nigerian bank account number (NUBAN)" },
         },
         required: ["usdcAmount"],
       },
@@ -194,7 +202,7 @@ export const rampTools: MCPTool[] = [
         return authRequiredResult("Please sign in to your Corre account to withdraw USDC to your bank.");
       }
       const identifier = context.verifiedUser.email || context.verifiedUser.privyUserId;
-      const { usdcAmount } = args as { usdcAmount: number };
+      const { usdcAmount, bankId, accountNumber } = args as { usdcAmount: number; bankId?: string; accountNumber?: string };
 
       if (!usdcAmount || !isFinite(usdcAmount) || usdcAmount <= 0) {
         return {
@@ -204,8 +212,96 @@ export const rampTools: MCPTool[] = [
       }
 
       const rate = await fetchLiveNairaRate("offRamp");
+      const PAJ_FEE_USDC = 0.5;
+      const estimatedNaira = Math.floor(Math.max(0, usdcAmount - PAJ_FEE_USDC) * rate);
 
-      const estimatedNaira = Math.floor(usdcAmount * rate);
+      if (bankId && accountNumber) {
+        const webhookUrl = `${process.env.BACKEND_URL || process.env.APP_URL || 'http://localhost:3001'}/webhook/paj-ramp`;
+        
+        let bankName = "Unknown Bank";
+        let accountName = "Unknown Account";
+        let finalBankInstId = bankId;
+
+        try {
+          const savedAccounts = await fetchSavedBankAccounts(context.verifiedUser.privyUserId);
+          const matchedAccount = savedAccounts.find(a => a.accountNumber === accountNumber && (a.id === bankId || a.bankId === bankId || a.bank?.includes(bankId) || true));
+          if (matchedAccount) {
+            bankName = matchedAccount.bank || bankName;
+            accountName = matchedAccount.accountName || accountName;
+            
+            // Resolve the actual bank institution ID from the bank name
+            const banks = await fetchSupportedBanks(context.verifiedUser.privyUserId);
+            const matchedBankInst = banks.find(b => b.name?.toLowerCase() === matchedAccount.bank?.toLowerCase());
+            if (matchedBankInst && (matchedBankInst.id || matchedBankInst.code)) {
+              finalBankInstId = matchedBankInst.id || matchedBankInst.code;
+            }
+          }
+        } catch (err) {
+          console.warn("Failed to fetch saved accounts for UI enrichment:", err);
+        }
+
+        const order = await createOfframp(context.verifiedUser.privyUserId, {
+          bank: finalBankInstId,
+          accountNumber,
+          currency: Currency.NGN,
+          amount: usdcAmount,
+          mint: USDC_MINT,
+          chain: Chain.SOLANA,
+          webhookURL: webhookUrl,
+          businessUSDCFee: 0.5
+        });
+
+        let canExecuteInChat = false;
+        let transactionId: string | undefined;
+        const amountCheck = validateInChatAmount(usdcAmount);
+
+        if (amountCheck.valid && context.verifiedUser) {
+          const wallet = await lookupUserWallet(context.verifiedUser.privyUserId);
+          if (wallet && wallet.walletAddress) {
+            transactionId = generateTransactionId();
+            canExecuteInChat = Boolean(wallet.walletId && wallet.walletId.length > 5);
+            await storePendingTransaction({
+              id: transactionId,
+              type: "offramp",
+              privyUserId: context.verifiedUser.privyUserId,
+              walletAddress: wallet.walletAddress,
+              walletId: wallet.walletId,
+              usdcAmount,
+              recipientAddress: order.address,
+              createdAt: Date.now(),
+              executed: false,
+              offrampOrderId: order.id
+            });
+          }
+        }
+
+        const resObj = {
+          status: "offramp_order_prepared",
+          user: identifier || "Authenticated User",
+          usdcAmount,
+          rateNgnPerUsdc: rate,
+          estimatedNairaReceived: `₦${estimatedNaira.toLocaleString()}`,
+          payoutMethod: "Local Bank Transfer",
+          bankId,
+          accountNumber,
+          bankName,
+          accountName,
+          platformFee: "0.50 USDC",
+          orderId: order.id,
+          canExecuteInChat,
+          transactionId,
+          instructions: canExecuteInChat
+            ? `ACTION REQUIRED BY ASSISTANT: An interactive transaction confirmation widget has been rendered directly in the chat window. DO NOT redirect the user to an external link.`
+            : `Please complete the withdrawal via the external checkout flow.`,
+        };
+
+        return {
+          content: [{ type: "text", text: JSON.stringify(resObj, null, 2) }],
+          structuredContent: resObj,
+          _meta: { ui: { resourceUri: "ui://corre/transaction" } },
+        };
+      }
+
       const deepLink = `${context.getAppBaseUrl()}/send/bank/africa?amount=${usdcAmount}`;
 
       const resObj = {
@@ -313,4 +409,181 @@ export const rampTools: MCPTool[] = [
       };
     },
   },
+  {
+    definition: {
+      name: "get_supported_banks",
+      description: "Get a list of supported Nigerian banks for Naira offramp withdrawals. Use this to help users select their bank when setting up a bank account for USDC withdrawal.",
+      inputSchema: { type: "object", properties: {} },
+      _meta: { securitySchemes: [{ type: "oauth2", scopes: [] }] }
+    },
+    handler: async (args, context) => {
+      if (!context.verifiedUser) {
+        return authRequiredResult("Please sign in to your Corre account.");
+      }
+      try {
+        const banks = await fetchSupportedBanks(context.verifiedUser.privyUserId);
+        const resObj = {
+          status: "success",
+          totalBanks: banks.length,
+          banks: banks.map(b => ({ id: b.id || b.code, name: b.name })),
+          instructions: "Select a bank from the list above, then use validate_bank_account with the bank ID and a 10-digit account number."
+        };
+        return {
+          content: [{ type: "text", text: JSON.stringify(resObj, null, 2) }],
+          structuredContent: resObj
+        };
+      } catch (err: any) {
+        return { isError: true, content: [{ type: "text", text: err.message || "Failed to fetch supported banks" }] };
+      }
+    }
+  },
+  {
+    definition: {
+      name: "validate_bank_account",
+      description: "Validate and resolve a Nigerian bank account number (NUBAN). Returns the verified account holder name. Use after getting the bank ID from get_supported_banks.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          bankId: { type: "string" },
+          accountNumber: { type: "string" }
+        },
+        required: ["bankId", "accountNumber"]
+      },
+      _meta: { securitySchemes: [{ type: "oauth2", scopes: [] }] }
+    },
+    handler: async (args, context) => {
+      if (!context.verifiedUser) {
+        return authRequiredResult("Please sign in to your Corre account.");
+      }
+      const { bankId, accountNumber } = args as { bankId: string; accountNumber: string };
+      if (!accountNumber || accountNumber.length !== 10) {
+        return { isError: true, content: [{ type: "text", text: "Invalid account number. Must be a 10-digit NUBAN." }] };
+      }
+      try {
+        const result = await resolveBank(context.verifiedUser.privyUserId, bankId, accountNumber);
+        const resObj = {
+          status: "account_verified",
+          bankId,
+          accountNumber,
+          accountName: result.accountName,
+          resolvedBankId: result.bank?.id || bankId,
+          instructions: "Account verified! You can now use prepare_offramp_usdc with these bank details, or save_bank_account to save for future use."
+        };
+        return {
+          content: [{ type: "text", text: JSON.stringify(resObj, null, 2) }],
+          structuredContent: resObj
+        };
+      } catch (err: any) {
+        return { isError: true, content: [{ type: "text", text: "Failed to verify account: " + err.message }] };
+      }
+    }
+  },
+  {
+    definition: {
+      name: "get_saved_bank_accounts",
+      description: "Get the user's saved Nigerian bank accounts for Naira offramp withdrawals.",
+      inputSchema: { type: "object", properties: {} },
+      _meta: { securitySchemes: [{ type: "oauth2", scopes: [] }] }
+    },
+    handler: async (args, context) => {
+      if (!context.verifiedUser) {
+        return authRequiredResult("Please sign in to your Corre account.");
+      }
+      try {
+        const accounts = await fetchSavedBankAccounts(context.verifiedUser.privyUserId);
+        const resObj = {
+          status: "success",
+          totalAccounts: accounts.length,
+          accounts: accounts.map(a => ({ id: a.id, accountName: a.accountName, bank: a.bank, accountNumber: a.accountNumber })),
+          instructions: accounts.length > 0 
+            ? "Select a saved account to use for offramp, or add a new bank account." 
+            : "No saved bank accounts found. YOU MUST NOW PROMPT THE USER to provide their Bank Name and 10-digit Account Number so you can save it for them. Once they provide it, use get_supported_banks and validate_bank_account to add it."
+        };
+        return {
+          content: [{ type: "text", text: JSON.stringify(resObj, null, 2) }],
+          structuredContent: resObj
+        };
+      } catch (err: any) {
+        return { isError: true, content: [{ type: "text", text: err.message || "Failed to fetch saved bank accounts" }] };
+      }
+    }
+  },
+  {
+    definition: {
+      name: "save_bank_account",
+      description: "Save a validated Nigerian bank account for future Naira offramp withdrawals.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          bankId: { type: "string" },
+          accountNumber: { type: "string" }
+        },
+        required: ["bankId", "accountNumber"]
+      },
+      _meta: { securitySchemes: [{ type: "oauth2", scopes: [] }] }
+    },
+    handler: async (args, context) => {
+      if (!context.verifiedUser) {
+        return authRequiredResult("Please sign in to your Corre account.");
+      }
+      const { bankId, accountNumber } = args as { bankId: string; accountNumber: string };
+      if (!accountNumber || accountNumber.length !== 10) {
+        return { isError: true, content: [{ type: "text", text: "Invalid account number. Must be a 10-digit NUBAN." }] };
+      }
+      try {
+        await saveBank(context.verifiedUser.privyUserId, bankId, accountNumber);
+        const resObj = {
+          status: "account_saved",
+          bankId,
+          accountNumber,
+          instructions: "Bank account saved successfully. You can now use prepare_offramp_usdc to withdraw USDC to this account."
+        };
+        return {
+          content: [{ type: "text", text: JSON.stringify(resObj, null, 2) }],
+          structuredContent: resObj
+        };
+      } catch (err: any) {
+        return { isError: true, content: [{ type: "text", text: "Failed to save account: " + err.message }] };
+      }
+    }
+  },
+  {
+    definition: {
+      name: "get_offramp_order_status",
+      description: "Check the status of a Naira offramp withdrawal order. Use this to track the progress of a USDC to Naira bank transfer.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          orderId: { type: "string" }
+        },
+        required: ["orderId"]
+      },
+      _meta: { securitySchemes: [{ type: "oauth2", scopes: [] }] }
+    },
+    handler: async (args, context) => {
+      if (!context.verifiedUser) {
+        return authRequiredResult("Please sign in to your Corre account.");
+      }
+      const { orderId } = args as { orderId: string };
+      try {
+        const result = await pool.query(
+          "SELECT id, status, amount_usdc, amount_fiat, rate, fee, updated_at FROM paj_offramp_orders WHERE id = $1",
+          [orderId]
+        );
+        if (result.rows.length === 0) {
+          return { isError: true, content: [{ type: "text", text: "Order not found" }] };
+        }
+        const resObj = {
+          status: "success",
+          order: result.rows[0]
+        };
+        return {
+          content: [{ type: "text", text: JSON.stringify(resObj, null, 2) }],
+          structuredContent: resObj
+        };
+      } catch (err: any) {
+        return { isError: true, content: [{ type: "text", text: err.message || "Failed to fetch order status" }] };
+      }
+    }
+  }
 ];
