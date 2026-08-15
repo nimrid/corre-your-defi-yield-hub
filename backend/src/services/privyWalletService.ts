@@ -14,6 +14,9 @@
 import { PrivyClient } from "@privy-io/server-auth";
 import { pool } from "../db.js";
 import { resolveUserId } from "../lib/dbHelpers.js";
+import { invalidateCache } from "../lib/responseCache.js";
+import { recordReferralAction, REFERRAL_POINTS } from "../lib/referral.js";
+import { findStockToken } from "../config/usStockTokens.js";
 import crypto from "crypto";
 import canonicalize from "canonicalize";
 
@@ -79,8 +82,11 @@ export interface PendingTransaction {
   vaultType?: "shielded" | "standard";
   // Stock-specific
   stockSymbol?: string;
+  stockName?: string;
   stockMint?: string;
   sharesAmount?: number;
+  outAmountRaw?: string;
+  jupiterRequestId?: string;
   // Offramp-specific
   offrampOrderId?: string;
   // Metadata
@@ -624,7 +630,12 @@ export async function signViaPrivy(
   console.log(`[PrivyWallet] Calling signTransaction (sign-only) for wallet ${walletId}`);
 
   const result = await postPrivyWalletRpc(walletId, rpcPayload);
-  const signed = result?.data?.signed_transaction || result?.signed_transaction || "";
+  const signed =
+    result?.data?.signed_transaction ||
+    result?.signed_transaction ||
+    result?.data?.signedTransaction ||
+    result?.signedTransaction ||
+    "";
 
   if (!signed) {
     console.error("[PrivyWallet] No signed_transaction in response:", JSON.stringify(result));
@@ -655,20 +666,11 @@ async function coSignWithFeePayerAndBroadcast(signedBase64Tx: string): Promise<s
 
   const txBuffer = Buffer.from(signedBase64Tx, "base64");
 
-  // Versioned transactions set the high bit of the first byte; legacy transactions
-  // start with a compact-u16 signature count (< 0x80).
-  const isVersioned = (txBuffer[0] & 0x80) !== 0;
-
-  let rawTx: Buffer | Uint8Array;
-  if (isVersioned) {
-    const vtx = VersionedTransaction.deserialize(txBuffer);
-    vtx.sign([feePayerWallet]); // fills the fee payer's signature slot
-    rawTx = vtx.serialize();
-  } else {
-    const legacyTx = Transaction.from(txBuffer);
-    legacyTx.partialSign(feePayerWallet); // adds fee payer sig, preserves user sig
-    rawTx = legacyTx.serialize();
-  }
+  // VersionedTransaction.deserialize correctly parses both legacy and versioned 
+  // transactions transparently, avoiding the "Versioned messages must be deserialized..." error
+  const vtx = VersionedTransaction.deserialize(txBuffer);
+  vtx.sign([feePayerWallet]); // fills the fee payer's signature slot (works for both)
+  const rawTx = vtx.serialize();
 
   const signature = await connection.sendRawTransaction(rawTx);
   console.log(`[PrivyWallet] Sponsored transaction co-signed and broadcast: ${signature}`);
@@ -793,87 +795,6 @@ export async function executePendingTransaction(
   }
 
   try {
-    let base64Tx: string;
-
-    // Determine the backend URL for gas sponsorship check
-    const backendUrl = process.env.BACKEND_URL || process.env.APP_URL || "http://localhost:3001";
-
-    // Check gas sponsorship eligibility
-    const gasSponsor = await checkGasSponsorship(pending.privyUserId, pending.usdcAmount, backendUrl);
-    const feePayerAddress = gasSponsor.sponsored ? gasSponsor.feePayerAddress : undefined;
-
-    // Build the transaction based on type
-    switch (pending.type) {
-      case "transfer": {
-        if (!pending.recipientAddress) {
-          return { success: false, error: "Recipient address missing from transaction." };
-        }
-        base64Tx = await buildUsdcTransferTx(
-          pending.walletAddress,
-          pending.recipientAddress,
-          pending.usdcAmount,
-          feePayerAddress
-        );
-        break;
-      }
-      case "savings_deposit": {
-        base64Tx = await buildSavingsDepositTx(
-          pending.walletAddress,
-          pending.usdcAmount,
-          pending.vaultType || "shielded",
-          feePayerAddress
-        );
-        break;
-      }
-      case "savings_withdraw": {
-        base64Tx = await buildSavingsWithdrawTx(
-          pending.walletAddress,
-          pending.usdcAmount,
-          pending.vaultType || "shielded",
-          feePayerAddress
-        );
-        break;
-      }
-      case "stock_buy": {
-        const stockMint = pending.stockMint || "XsDoVfqeBukxuZHWhdvWHBhgEHjGNst4MLodqsJHzoB";
-        base64Tx = await buildJupiterStockSwapTx(
-          pending.walletAddress,
-          USDC_MINT,
-          stockMint,
-          pending.usdcAmount,
-          6
-        );
-        break;
-      }
-      case "stock_sell": {
-        const stockMint = pending.stockMint || "XsDoVfqeBukxuZHWhdvWHBhgEHjGNst4MLodqsJHzoB";
-        const shares = pending.sharesAmount || 1;
-        base64Tx = await buildJupiterStockSwapTx(
-          pending.walletAddress,
-          stockMint,
-          USDC_MINT,
-          shares,
-          6
-        );
-        break;
-      }
-      case "offramp": {
-        if (!pending.recipientAddress) {
-          return { success: false, error: "Offramp deposit address missing from transaction. Please prepare a new offramp order." };
-        }
-        // Offramp sends USDC to the PAJ Ramp deposit address — identical to a standard USDC transfer
-        base64Tx = await buildUsdcTransferTx(
-          pending.walletAddress,
-          pending.recipientAddress,
-          pending.usdcAmount,
-          feePayerAddress
-        );
-        break;
-      }
-      default:
-        return { success: false, error: `Unknown transaction type: ${pending.type}` };
-    }
-
     // Ensure walletId is valid for Privy server signing
     if (!isValidPrivyWalletId(pending.walletId)) {
       const appBaseUrl = (
@@ -890,16 +811,86 @@ export async function executePendingTransaction(
       };
     }
 
-    // Sign and send via Privy.
-    // If the transaction is gas-sponsored, its fee payer is the sponsor address, so Privy
-    // can only apply the user's signature — the fee payer must co-sign before broadcast.
-    // Otherwise the user's wallet is the fee payer and Privy can sign + send in one call.
     let txSignature: string;
-    if (feePayerAddress) {
-      const userSignedTx = await signViaPrivy(pending.walletId, base64Tx);
-      txSignature = await coSignWithFeePayerAndBroadcast(userSignedTx);
+
+    if (pending.type === "stock_buy" || pending.type === "stock_sell") {
+      // Direct Jupiter V2 Order + Execute flow (exact match to frontend useTradeDialog.ts)
+      const stockResult = await executeJupiterStockOrder(pending);
+      txSignature = stockResult.txSignature;
+      if (stockResult.outAmountRaw) {
+        pending.outAmountRaw = stockResult.outAmountRaw;
+      }
+      if (stockResult.requestId) {
+        pending.jupiterRequestId = stockResult.requestId;
+      }
     } else {
-      txSignature = await signAndSendViaPrivy(pending.walletId, base64Tx);
+      let base64Tx: string;
+
+      // Determine the backend URL for gas sponsorship check
+      const backendUrl = process.env.BACKEND_URL || process.env.APP_URL || "http://localhost:3001";
+
+      // Check gas sponsorship eligibility
+      const gasSponsor = await checkGasSponsorship(pending.privyUserId, pending.usdcAmount, backendUrl);
+      const feePayerAddress = gasSponsor.sponsored ? gasSponsor.feePayerAddress : undefined;
+
+      // Build the transaction based on type
+      switch (pending.type) {
+        case "transfer": {
+          if (!pending.recipientAddress) {
+            return { success: false, error: "Recipient address missing from transaction." };
+          }
+          base64Tx = await buildUsdcTransferTx(
+            pending.walletAddress,
+            pending.recipientAddress,
+            pending.usdcAmount,
+            feePayerAddress
+          );
+          break;
+        }
+        case "savings_deposit": {
+          base64Tx = await buildSavingsDepositTx(
+            pending.walletAddress,
+            pending.usdcAmount,
+            pending.vaultType || "shielded",
+            feePayerAddress
+          );
+          break;
+        }
+        case "savings_withdraw": {
+          base64Tx = await buildSavingsWithdrawTx(
+            pending.walletAddress,
+            pending.usdcAmount,
+            pending.vaultType || "shielded",
+            feePayerAddress
+          );
+          break;
+        }
+        case "offramp": {
+          if (!pending.recipientAddress) {
+            return { success: false, error: "Offramp deposit address missing from transaction. Please prepare a new offramp order." };
+          }
+          base64Tx = await buildUsdcTransferTx(
+            pending.walletAddress,
+            pending.recipientAddress,
+            pending.usdcAmount,
+            feePayerAddress
+          );
+          break;
+        }
+        default:
+          return { success: false, error: `Unknown transaction type: ${pending.type}` };
+      }
+
+      // Sign and send via Privy.
+      // If the transaction is gas-sponsored, its fee payer is the sponsor address, so Privy
+      // can only apply the user's signature — the fee payer must co-sign before broadcast.
+      // Otherwise the user's wallet is the fee payer and Privy can sign + send in one call.
+      if (feePayerAddress) {
+        const userSignedTx = await signViaPrivy(pending.walletId, base64Tx);
+        txSignature = await coSignWithFeePayerAndBroadcast(userSignedTx);
+      } else {
+        txSignature = await signAndSendViaPrivy(pending.walletId, base64Tx);
+      }
     }
 
     // Mark as executed
@@ -959,15 +950,23 @@ export function formatUserFriendlySolanaError(rawError: string): string {
   }
 
   // Unpack JSON nested error strings (e.g. {"error":"Error broadcasting transaction with message: ..."})
-  let cleaned = rawError;
+  let cleaned = typeof rawError === "string" ? rawError : JSON.stringify(rawError);
   try {
-    const match = rawError.match(/\{"error":.*?\}/);
+    const match = cleaned.match(/\{"error":.*?\}/);
     if (match) {
       const parsed = JSON.parse(match[0]);
-      if (parsed.error) cleaned = parsed.error;
+      if (parsed.error) {
+        cleaned = typeof parsed.error === "object"
+          ? (parsed.error.message || parsed.error.error || JSON.stringify(parsed.error))
+          : String(parsed.error);
+      }
     }
   } catch {
     // Keep rawError if JSON parsing fails
+  }
+
+  if (typeof cleaned !== "string") {
+    cleaned = JSON.stringify(cleaned);
   }
 
   // Strip technical RPC prefix wrappers
@@ -1005,23 +1004,116 @@ async function recordTransaction(pending: PendingTransaction, txSignature: strin
         [userId, pending.usdcAmount.toString(), txSignature, pending.walletAddress, vaultLabel]
       );
     } else if (pending.type === "stock_buy") {
+      const stockConfig = pending.stockMint ? findStockToken(pending.stockMint) : (pending.stockSymbol ? findStockToken(pending.stockSymbol) : undefined);
+      const stockName = pending.stockName || stockConfig?.name || pending.stockSymbol || "Tokenized US Stock";
+      const stockSymbol = pending.stockSymbol || stockConfig?.symbol || "STOCK";
+      const stockMint = pending.stockMint || stockConfig?.mint || "XsDoVfqeBukxuZHWhdvWHBhgEHjGNst4MLodqsJHzoB";
+      const sharesAmountStr = pending.outAmountRaw
+        ? (Number(pending.outAmountRaw) / 1_000_000).toString()
+        : (pending.sharesAmount ? pending.sharesAmount.toString() : null);
+      const sharesDelta = sharesAmountStr ? parseFloat(sharesAmountStr) : 0;
+
       await pool.query(
         `INSERT INTO transactions (user_id, chain_type, asset_symbol, amount, direction, tx_signature, from_address, to_address, source)
          VALUES ($1, 'solana', $2, $3, 'outgoing', $4, $5, $6, 'mcp_in_chat')`,
-        [userId, pending.stockSymbol || "STOCK", pending.usdcAmount.toString(), txSignature, pending.walletAddress, pending.stockMint || "Jupiter"]
+        [userId, stockSymbol, pending.usdcAmount.toString(), txSignature, pending.walletAddress, stockMint]
       );
+
+      await pool.query(
+        `INSERT INTO stock_purchases
+         (user_id, stock_mint, stock_symbol, stock_name, usdc_amount, shares_amount,
+          wallet_address, tx_signature, jupiter_request_id, source)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+        [
+          userId,
+          stockMint,
+          stockSymbol,
+          stockName,
+          pending.usdcAmount.toString(),
+          sharesAmountStr,
+          pending.walletAddress || null,
+          txSignature,
+          pending.jupiterRequestId || null,
+          "invest_buy",
+        ]
+      );
+
+      await pool.query(
+        `INSERT INTO stock_holdings_summary (user_id, stock_mint, shares)
+         VALUES ($1, $2, GREATEST($3::numeric, 0::numeric))
+         ON CONFLICT (user_id, stock_mint)
+         DO UPDATE SET
+           shares     = GREATEST(stock_holdings_summary.shares + EXCLUDED.shares, 0::numeric),
+           updated_at = NOW()`,
+        [userId, stockMint, sharesDelta]
+      );
+
+      invalidateCache(`/stocks/history/${pending.privyUserId}`);
+      invalidateCache(`/stock-history/${pending.privyUserId}`);
+      recordReferralAction(userId, "BUY_US_STOCK", REFERRAL_POINTS.BUY_US_STOCK).catch(() => {});
     } else if (pending.type === "stock_sell") {
+      const stockConfig = pending.stockMint ? findStockToken(pending.stockMint) : (pending.stockSymbol ? findStockToken(pending.stockSymbol) : undefined);
+      const stockName = pending.stockName || stockConfig?.name || pending.stockSymbol || "Tokenized US Stock";
+      const stockSymbol = pending.stockSymbol || stockConfig?.symbol || "STOCK";
+      const stockMint = pending.stockMint || stockConfig?.mint || "XsDoVfqeBukxuZHWhdvWHBhgEHjGNst4MLodqsJHzoB";
+      const usdcReceivedStr = pending.outAmountRaw
+        ? (Number(pending.outAmountRaw) / 1_000_000).toString()
+        : (pending.usdcAmount ? pending.usdcAmount.toString() : "0");
+      const sharesAmountStr = pending.sharesAmount ? pending.sharesAmount.toString() : "1";
+      const sharesDelta = -parseFloat(sharesAmountStr);
+
       await pool.query(
         `INSERT INTO transactions (user_id, chain_type, asset_symbol, amount, direction, tx_signature, from_address, to_address, source)
          VALUES ($1, 'solana', $2, $3, 'incoming', $4, $5, $6, 'mcp_in_chat')`,
-        [userId, pending.stockSymbol || "STOCK", (pending.sharesAmount || 1).toString(), txSignature, pending.walletAddress, "USDC"]
+        [userId, stockSymbol, sharesAmountStr, txSignature, pending.walletAddress, "USDC"]
       );
+
+      await pool.query(
+        `INSERT INTO stock_sales
+         (user_id, stock_mint, stock_symbol, stock_name, usdc_amount, shares_amount,
+          wallet_address, tx_signature, jupiter_request_id, source)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+        [
+          userId,
+          stockMint,
+          stockSymbol,
+          stockName,
+          usdcReceivedStr,
+          sharesAmountStr,
+          pending.walletAddress || null,
+          txSignature,
+          pending.jupiterRequestId || null,
+          "invest_sell",
+        ]
+      );
+
+      await pool.query(
+        `INSERT INTO stock_holdings_summary (user_id, stock_mint, shares)
+         VALUES ($1, $2, GREATEST($3::numeric, 0::numeric))
+         ON CONFLICT (user_id, stock_mint)
+         DO UPDATE SET
+           shares     = GREATEST(stock_holdings_summary.shares + EXCLUDED.shares, 0::numeric),
+           updated_at = NOW()`,
+        [userId, stockMint, sharesDelta]
+      );
+
+      invalidateCache(`/stocks/history/${pending.privyUserId}`);
+      invalidateCache(`/stock-history/${pending.privyUserId}`);
     } else if (pending.type === "offramp") {
       await pool.query(
         `INSERT INTO transactions (user_id, chain_type, asset_symbol, amount, direction, tx_signature, from_address, to_address, source)
          VALUES ($1, 'solana', 'USDC', $2, 'outgoing', $3, $4, $5, 'mcp_offramp')`,
         [userId, pending.usdcAmount.toString(), txSignature, pending.walletAddress, pending.recipientAddress || 'paj_ramp_deposit']
       );
+
+      if (pending.offrampOrderId) {
+        await pool.query(
+          `INSERT INTO paj_offramp_orders (id, amount_usdc, status, updated_at)
+           VALUES ($1, $2, 'PENDING', NOW())
+           ON CONFLICT (id) DO UPDATE SET status = EXCLUDED.status, updated_at = NOW()`,
+          [pending.offrampOrderId, pending.usdcAmount]
+        ).catch((err) => console.warn("[PrivyWallet] Failed to seed paj_offramp_orders:", err));
+      }
     }
   } catch (err) {
     console.error("[PrivyWallet] DB record error:", err);
@@ -1029,67 +1121,103 @@ async function recordTransaction(pending: PendingTransaction, txSignature: strin
 }
 
 /**
- * Builds a Jupiter Swap transaction (base64 serialized) for swapping USDC <-> Tokenized Stock.
+ * Executes a tokenized stock swap (buy/sell) using the exact Jupiter v2 Order and Execute endpoints
+ * matching frontend `useTradeDialog.ts`.
  */
-export async function buildJupiterStockSwapTx(
-  userAddress: string,
-  inputMint: string,
-  outputMint: string,
-  amount: number,
-  decimals: number = 6
-): Promise<string> {
-  const rawAmount = Math.round(amount * (10 ** decimals));
+export async function executeJupiterStockOrder(
+  pending: PendingTransaction
+): Promise<{ txSignature: string; outAmountRaw?: string; requestId?: string }> {
+  const isBuy = pending.type === "stock_buy";
+  const stockMint = pending.stockMint || "XsDoVfqeBukxuZHWhdvWHBhgEHjGNst4MLodqsJHzoB";
+  const inputMint = isBuy ? USDC_MINT : stockMint;
+  const outputMint = isBuy ? stockMint : USDC_MINT;
 
-  const headers: Record<string, string> = { "Content-Type": "application/json" };
-  const jupApiKey = process.env.VITE_JUP_API_KEY || process.env.JUPITER_API_KEY;
-  if (jupApiKey) {
-    headers["x-api-key"] = jupApiKey;
+  let rawAmount: number;
+  if (isBuy) {
+    rawAmount = Math.round(pending.usdcAmount * 1_000_000);
+  } else {
+    rawAmount = Math.round((pending.sharesAmount || 1) * 1_000_000);
   }
 
-  // 1. Try Jupiter Ultra API v2 order endpoint (exact match to frontend useTradeDialog)
-  const orderUrl = `https://api.jup.ag/swap/v2/order?inputMint=${inputMint}&outputMint=${outputMint}&amount=${rawAmount}&taker=${userAddress}&referralAccount=5VAt8EHw6jQuSC3X2ezTZDmF9pfLrLnoZLbVwMP7B8Ga&referralFee=100`;
-
-  const orderRes = await fetch(orderUrl, { method: "GET", headers });
-  if (orderRes.ok) {
-    const data: any = await orderRes.json().catch(() => null);
-    if (data?.transaction) {
-      return data.transaction;
-    }
+  const apiKey = (process.env.VITE_JUP_API_KEY || process.env.JUPITER_API_KEY || "7533d7b5-93c3-43ed-942e-08a8142c2dd4").trim();
+  const headers: Record<string, string> = {};
+  if (apiKey) {
+    headers["x-api-key"] = apiKey;
   }
 
-  // 2. Fallback: Jupiter V6 Quote & Swap API
-  const quoteUrl = `https://quote-api.jup.ag/v6/quote?inputMint=${inputMint}&outputMint=${outputMint}&amount=${rawAmount}&slippageBps=100`;
-  const quoteRes = await fetch(quoteUrl, { headers });
-  if (!quoteRes.ok) {
-    const errText = await quoteRes.text().catch(() => "");
-    console.error("[JupiterSwap] Quote failed:", quoteRes.status, errText);
-    throw new Error(`Failed to fetch stock quote from Jupiter (${quoteRes.status}): ${errText || quoteRes.statusText}`);
-  }
-  const quoteData = await quoteRes.json();
+  // 1. Order endpoint (exact frontend match)
+  const base = "https://api.jup.ag/swap/v2/order";
+  const params = new URLSearchParams({
+    inputMint,
+    outputMint,
+    amount: String(rawAmount),
+    taker: pending.walletAddress,
+    referralAccount: "5VAt8EHw6jQuSC3X2ezTZDmF9pfLrLnoZLbVwMP7B8Ga",
+    referralFee: "100",
+  });
+  const url = `${base}?${params.toString()}`;
 
-  const swapRes = await fetch("https://quote-api.jup.ag/v6/swap", {
-    method: "POST",
+  const res = await fetch(url, {
+    method: "GET",
     headers,
+  });
+
+  const data: any = await res.json().catch(() => null);
+  if (!res.ok) {
+    const apiMsg = data?.error ?? data?.message ?? data?.errorMessage ?? data?.detail ?? `Jupiter API error ${res.status}`;
+    const errString = typeof apiMsg === "object" ? (apiMsg?.message || JSON.stringify(apiMsg)) : String(apiMsg);
+    throw new Error(errString);
+  }
+
+  if (data?.errorMessage || (data?.error && typeof data.error === "string")) {
+    throw new Error(data.errorMessage || data.error);
+  }
+
+  const unsignedTx = data?.transaction as string | undefined;
+  const requestId = data?.requestId as string | undefined;
+  const lastValidBlockHeight = data?.lastValidBlockHeight != null ? String(data.lastValidBlockHeight) : null;
+  const outAmountRaw = data?.outAmount as string | undefined;
+
+  if (!unsignedTx || !requestId) {
+    throw new Error(data?.errorMessage || "Incomplete quote response from Jupiter. Token may not be tradeable via this route.");
+  }
+
+  // 2. Sign transaction with user's Privy wallet (server-side signing)
+  const signedBase64 = await signViaPrivy(pending.walletId, unsignedTx);
+
+  // 3. Execute order on Jupiter (exact frontend match)
+  const execRes = await fetch("https://api.jup.ag/swap/v2/execute", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...headers,
+    },
     body: JSON.stringify({
-      quoteResponse: quoteData,
-      userPublicKey: userAddress,
-      wrapAndUnwrapSol: true,
-      dynamicComputeUnitLimit: true,
+      signedTransaction: signedBase64,
+      requestId,
+      lastValidBlockHeight: lastValidBlockHeight != null ? String(lastValidBlockHeight) : undefined,
     }),
   });
 
-  if (!swapRes.ok) {
-    const errText = await swapRes.text().catch(() => "");
-    console.error("[JupiterSwap] Build swap failed:", swapRes.status, errText);
-    throw new Error(`Failed to build Jupiter stock swap transaction (${swapRes.status}): ${errText || swapRes.statusText}`);
+  if (!execRes.ok) {
+    const execErr = await execRes.json().catch(() => null);
+    const msg = execErr?.error ?? execErr?.message ?? execErr?.errorMessage ?? `Failed to execute stock order: ${execRes.status}`;
+    const errString = typeof msg === "object" ? (msg?.message || JSON.stringify(msg)) : String(msg);
+    throw new Error(errString);
   }
 
-  const swapData = await swapRes.json();
-  if (!swapData?.swapTransaction) {
-    throw new Error("Jupiter did not return a valid swap transaction payload.");
+  const execData: any = await execRes.json().catch(() => null);
+  const signature = execData?.signature ?? execData?.txid ?? "";
+
+  if (!signature) {
+    throw new Error("Jupiter did not return a transaction signature.");
   }
 
-  return swapData.swapTransaction;
+  return {
+    txSignature: signature,
+    outAmountRaw,
+    requestId,
+  };
 }
 
 // ── UUID Generator ─────────────────────────────────────────────────────────────

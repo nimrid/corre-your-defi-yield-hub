@@ -49,10 +49,9 @@ export function SessionExpiredModal({
           <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-primary/10 text-primary mb-2">
             <span className="text-2xl font-bold">C</span>
           </div>
-          <DialogTitle className="text-center">Reconnect to Corre</DialogTitle>
+          <DialogTitle className="text-center">Session Timed Out</DialogTitle>
           <DialogDescription className="text-center">
-            Your Corre connection has expired. Reconnect it before we can
-            continue with this request.
+            For your security, you were automatically logged out after 1 hour of inactivity. Log back in to continue.
           </DialogDescription>
         </DialogHeader>
         <div className="flex gap-3 mt-4">

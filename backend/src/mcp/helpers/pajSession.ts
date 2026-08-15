@@ -40,5 +40,13 @@ export async function fetchSavedBankAccounts(privyUserId: string): Promise<any[]
 
 export async function createOfframp(privyUserId: string, params: { bank: string; accountNumber: string; currency: any; amount: number; mint: string; chain: any; webhookURL: string; businessUSDCFee: number }, sessionToken?: string): Promise<any> {
     const token = sessionToken || await getPajSessionToken(privyUserId);
-    return createOfframpOrder(params, token);
+    try {
+        return await createOfframpOrder(params, token);
+    } catch (err: any) {
+        const msg = err?.message || String(err);
+        if (msg.includes("Session is invalid or expired") || msg.includes("Unauthorized")) {
+            throw new Error("Your Corre bank integration session has expired. Please go to the Corre App settings and link your bank account again to get a fresh PAJ session.");
+        }
+        throw new Error(`PAJ API Error: ${msg}`);
+    }
 }
