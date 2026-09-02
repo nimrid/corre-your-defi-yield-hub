@@ -9,6 +9,13 @@ export function useSessionMonitor() {
   const [sessionExpired, setSessionExpired] = useState(false);
   const { getAccessToken, authenticated, logout } = usePrivy();
   const lastWriteRef = useRef<number>(Date.now());
+  const logoutRef = useRef(logout);
+  const getAccessTokenRef = useRef(getAccessToken);
+
+  useEffect(() => {
+    logoutRef.current = logout;
+    getAccessTokenRef.current = getAccessToken;
+  });
 
   // Record user activity (throttled)
   const updateActivity = useCallback(() => {
@@ -33,13 +40,15 @@ export function useSessionMonitor() {
       console.warn("[SessionMonitor] 1 hour of inactivity reached. Logging out...");
       try {
         localStorage.removeItem(STORAGE_KEY);
-        await logout();
+        if (logoutRef.current) {
+          await logoutRef.current();
+        }
       } catch (error) {
         console.error("[SessionMonitor] Logout failed:", error);
       }
       setSessionExpired(true);
     }
-  }, [authenticated, logout]);
+  }, [authenticated]);
 
   // 1. Listen for 401 responses from API calls
   useEffect(() => {
@@ -62,7 +71,9 @@ export function useSessionMonitor() {
 
     const checkTokenValidity = async () => {
       try {
-        await getAccessToken();
+        if (getAccessTokenRef.current) {
+          await getAccessTokenRef.current();
+        }
       } catch (error) {
         console.error("[useSessionMonitor] Token check failed:", error);
         setSessionExpired(true);
@@ -71,7 +82,7 @@ export function useSessionMonitor() {
 
     const interval = setInterval(checkTokenValidity, 5 * 60 * 1000);
     return () => clearInterval(interval);
-  }, [authenticated, getAccessToken]);
+  }, [authenticated]);
 
   // 3. User inactivity tracking & Wake-from-sleep listener
   useEffect(() => {

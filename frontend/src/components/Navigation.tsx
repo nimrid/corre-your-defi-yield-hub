@@ -8,6 +8,7 @@ import { useEffect } from "react";
 import { toast } from "sonner";
 
 import { apiFetch } from "@/services/apiClient";
+import { WebMcpStatusBadge } from "@/webmcp";
 
 
 const TELEGRAM_COMMUNITY_URL = "https://t.me/+_ExsYWddoeNmZTA0";
@@ -114,6 +115,8 @@ const Navigation = () => {
 
           {/* Desktop Navigation */}
           <div className="hidden md:flex items-center space-x-4">
+            <WebMcpStatusBadge />
+
             {ready && authenticated ? (
               <>
                 {needsDelegation && (
@@ -157,13 +160,17 @@ const Navigation = () => {
             )}
           </div>
 
-          {/* Mobile menu button */}
-          <button
-            onClick={() => setIsOpen(!isOpen)}
-            className="md:hidden p-2 rounded-lg hover:bg-secondary transition-colors"
-          >
-            {isOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
-          </button>
+          {/* Mobile menu button and WebMCP badge */}
+          <div className="flex items-center gap-2 md:hidden">
+            <WebMcpStatusBadge />
+            <button
+              onClick={() => setIsOpen(!isOpen)}
+              className="p-2 rounded-lg hover:bg-secondary transition-colors"
+            >
+              {isOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
+            </button>
+          </div>
+
         </div>
       </div>
 

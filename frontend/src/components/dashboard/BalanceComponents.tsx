@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { usePrivy } from "@privy-io/react-auth";
 import { useNavigate } from "react-router-dom";
 
@@ -6,42 +6,46 @@ export const Balance = ({ wallet, address }: { wallet: any, address?: string }) 
   const { user } = usePrivy();
   const [balance, setBalance] = useState<string>("-");
 
+  const walletChain = wallet?.chainType || wallet?.walletClientType || wallet?.chain;
+
   useEffect(() => {
+    let isMounted = true;
+
     const fetchBalance = async () => {
       try {
         // For Solana wallets, fetch USDC SPL token balance directly via RPC.
         if (
-          wallet.chainType === "solana" ||
-          (wallet as any).walletClientType === "solana" ||
-          (wallet as any).chain === "solana"
+          walletChain === "solana"
         ) {
           if (!address) {
-            setBalance("-");
+            if (isMounted) setBalance("-");
             return;
           }
 
           const { Connection, PublicKey } = await import("@solana/web3.js");
-          const connection = new Connection("https://solana-mainnet.g.alchemy.com/v2/C5-LCLXSwlCEtsquSDPIj", "confirmed");
+          const rpcUrl = (import.meta.env.VITE_SOLANA_RPC ?? "https://api.mainnet-beta.solana.com").replace(/^['"]|['"]$/g, "").trim();
+          const connection = new Connection(rpcUrl, "confirmed");
           const owner = new PublicKey(address);
           const USDC_MINT = new PublicKey("EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"); // Solana USDC
           const resp = await connection.getParsedTokenAccountsByOwner(owner, { mint: USDC_MINT });
-          console.log("[DEBUG] Solana USDC RPC response for", address.toString(), ":", resp);
           const ui = resp.value.reduce((sum, acc: any) => {
             const amt =
               acc?.account?.data?.parsed?.info?.tokenAmount?.uiAmount ?? 0;
             return sum + Number(amt || 0);
           }, 0);
-          setBalance(
-            `${Number(ui).toLocaleString(undefined, {
-              maximumFractionDigits: 4,
-            })} USDC`,
-          );
+          if (isMounted) {
+            setBalance(
+              `${Number(ui).toLocaleString(undefined, {
+                maximumFractionDigits: 4,
+              })} USDC`,
+            );
+          }
           return;
         }
 
         // For non-Solana wallets, use Privy's wallet balance API via wallet_id.
         if (!user) {
-          setBalance("-");
+          if (isMounted) setBalance("-");
           return;
         }
 
@@ -60,7 +64,7 @@ export const Balance = ({ wallet, address }: { wallet: any, address?: string }) 
         const walletId = (matching as any)?.walletId ?? (matching as any)?.wallet_id;
 
         if (!walletId) {
-          setBalance("-");
+          if (isMounted) setBalance("-");
           return;
         }
 
@@ -69,21 +73,20 @@ export const Balance = ({ wallet, address }: { wallet: any, address?: string }) 
           {
             method: "GET",
             headers: {
-              // NOTE: For production, you should proxy this through your backend instead of calling Privy directly from the client.
               "Content-Type": "application/json",
             },
           },
         );
 
         if (!res.ok) {
-          setBalance("-");
+          if (isMounted) setBalance("-");
           return;
         }
 
         const data: any = await res.json();
 
         if (!Array.isArray(data.balances) || !data.balances.length) {
-          setBalance("0");
+          if (isMounted) setBalance("0");
           return;
         }
 
@@ -94,18 +97,24 @@ export const Balance = ({ wallet, address }: { wallet: any, address?: string }) 
           typeof primary.decimals === "number" ? primary.decimals : 18;
 
         const asNumber = Number(raw) / 10 ** decimals;
-        setBalance(
-          `${asNumber.toLocaleString(undefined, {
-            maximumFractionDigits: 4,
-          })} ${symbol}`,
-        );
+        if (isMounted) {
+          setBalance(
+            `${asNumber.toLocaleString(undefined, {
+              maximumFractionDigits: 4,
+            })} ${symbol}`,
+          );
+        }
       } catch {
-        setBalance("-");
+        if (isMounted) setBalance("-");
       }
     };
 
     fetchBalance();
-  }, [user, wallet, address]);
+
+    return () => {
+      isMounted = false;
+    };
+  }, [user?.id, address, walletChain]);
 
   return <p className="text-lg font-bold">{balance}</p>;
 };
@@ -113,11 +122,20 @@ export const Balance = ({ wallet, address }: { wallet: any, address?: string }) 
 export const TotalBalance = ({ wallets }: { wallets: any[] }) => {
   const [total, setTotal] = useState<string>("-");
 
+  // Create a stable key from the wallets array to avoid re-fetching on reference changes
+  const walletsKey = useMemo(() => {
+    return wallets
+      .map((w) => `${(w as any)?.address || ""}:${(w as any)?.chainType || (w as any)?.walletClientType || (w as any)?.chain || ""}`)
+      .join("|");
+  }, [wallets]);
+
   useEffect(() => {
+    let isMounted = true;
+
     const fetchTotal = async () => {
       try {
         if (!wallets.length) {
-          setTotal("-");
+          if (isMounted) setTotal("-");
           return;
         }
 
@@ -133,7 +151,8 @@ export const TotalBalance = ({ wallets }: { wallets: any[] }) => {
             (wallet as any).chain === 'solana'
           ) {
             const { Connection, PublicKey } = await import('@solana/web3.js');
-            const connection = new Connection("https://solana-mainnet.g.alchemy.com/v2/C5-LCLXSwlCEtsquSDPIj", 'confirmed');
+            const rpcUrl = (import.meta.env.VITE_SOLANA_RPC ?? "https://api.mainnet-beta.solana.com").replace(/^['"]|['"]$/g, "").trim();
+            const connection = new Connection(rpcUrl, 'confirmed');
             const owner = new PublicKey(address);
             const USDC_MINT = new PublicKey('EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v');
             const resp = await connection.getParsedTokenAccountsByOwner(owner, { mint: USDC_MINT });
@@ -165,16 +184,20 @@ export const TotalBalance = ({ wallets }: { wallets: any[] }) => {
           }
         }
 
-        setTotal(`${sum.toLocaleString(undefined, { maximumFractionDigits: 4 })} USDC`);
+        if (isMounted) {
+          setTotal(`${sum.toLocaleString(undefined, { maximumFractionDigits: 4 })} USDC`);
+        }
       } catch {
-        setTotal("-");
+        if (isMounted) setTotal("-");
       }
     };
 
     fetchTotal();
-  }, [wallets]);
 
-  const navigate = useNavigate();
+    return () => {
+      isMounted = false;
+    };
+  }, [walletsKey]);
 
   return (
     <div className="flex items-center gap-3">
