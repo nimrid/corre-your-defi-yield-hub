@@ -82,7 +82,7 @@ const InvestPrivateMarket = () => {
           <div className="space-y-3">
             <div className="flex items-center justify-between">
               <h2 className="text-sm font-semibold tracking-wide uppercase text-muted-foreground">
-                Tokenized Real-World Assets (GetEquity)
+                Tokenized Real-World Assets
               </h2>
               <span className="text-xs text-muted-foreground">Instant Settlement on Solana</span>
             </div>
