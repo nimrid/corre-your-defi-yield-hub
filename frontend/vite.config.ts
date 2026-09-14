@@ -10,7 +10,7 @@ export default defineConfig(({ mode }) => {
 
   return ({
   server: {
-    host: "::",
+    host: "0.0.0.0",
     port: 8080,
     proxy: {
       "/api": {
@@ -105,10 +105,23 @@ export default defineConfig(({ mode }) => {
       },
     }),
   ].filter(Boolean),
+  define: {
+    global: "globalThis",
+  },
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
+      buffer: "buffer",
+    },
+  },
+  optimizeDeps: {
+    include: ["buffer"],
+    esbuildOptions: {
+      define: {
+        global: "globalThis",
+      },
     },
   },
   });
+
 });
