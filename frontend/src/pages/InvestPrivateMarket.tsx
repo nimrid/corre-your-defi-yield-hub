@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { RWA_TOKENS, type RwaTokenConfig } from "@/config/rwaTokens";
 import { fetchRwaAsset, getGetEquityConnection } from "@/services/getEquityService";
 import { Badge } from "@/components/ui/badge";
+import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 
 const LEGACY_PRIVATE_ITEMS = [
   {
@@ -98,9 +99,12 @@ const InvestPrivateMarket = () => {
                     className="flex flex-col sm:flex-row items-start sm:items-center gap-4 rounded-xl bg-secondary/40 border border-border/60 p-4 cursor-pointer hover:bg-secondary/60 hover:border-primary/40 transition-all"
                     onClick={() => navigate(`/invest/private-market/${token.id}`)}
                   >
-                    <div className="flex-shrink-0 w-12 h-12 rounded-xl overflow-hidden bg-primary/10 border border-primary/20 flex items-center justify-center text-primary text-lg font-bold">
-                      {token.symbol.slice(0, 2)}
-                    </div>
+                    <Avatar className="flex-shrink-0 w-12 h-12 rounded-xl border border-primary/20 bg-primary/10">
+                      <AvatarImage src={token.icon} alt={token.name} className="object-cover" />
+                      <AvatarFallback className="rounded-xl bg-primary/10 text-primary text-lg font-bold">
+                        {token.symbol.slice(0, 2)}
+                      </AvatarFallback>
+                    </Avatar>
                     <div className="flex-1 min-w-0 w-full space-y-1">
                       <div className="flex items-center gap-2 flex-wrap">
                         <p className="text-base font-semibold truncate text-foreground">{token.name}</p>

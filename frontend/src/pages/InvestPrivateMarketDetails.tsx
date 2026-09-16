@@ -38,11 +38,13 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
+import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { findRwaToken } from "@/config/rwaTokens";
 import {
   fetchRwaMarketOverview,
   fetchUserRwaHolding,
   getGetEquityConnection,
+  KNOWN_PAYOUT_MINTS,
   type RwaMarketOverview,
 } from "@/services/getEquityService";
 import RwaTradeDialog, { type SolanaWalletLike } from "@/components/RwaTradeDialog";
@@ -92,6 +94,7 @@ const InvestPrivateMarketDetails = () => {
   const [rwaLoading, setRwaLoading] = useState(false);
   const [userRwaShares, setUserRwaShares] = useState<number | null>(null);
   const [userUsdcBalance, setUserUsdcBalance] = useState<number | null>(null);
+  const [userCngnBalance, setUserCngnBalance] = useState<number | null>(null);
   const [tradeModalOpen, setTradeModalOpen] = useState(false);
   const [tradeDirection, setTradeDirection] = useState<"buy" | "sell">("buy");
 
@@ -117,7 +120,7 @@ const InvestPrivateMarketDetails = () => {
       const overview = await fetchRwaMarketOverview(connection, rwaConfig.mint);
       setRwaOverview(overview);
 
-      // If user has a connected wallet, fetch their DPRI and USDC balances
+      // If user has a connected wallet, fetch their DPRI, USDC, and payout (cNGN) balances
       if (solWallet) {
         let walletAddress: string | undefined = solWallet.address;
         if (!walletAddress && typeof solWallet.getAddress === "function") {
@@ -132,9 +135,30 @@ const InvestPrivateMarketDetails = () => {
           );
           setUserRwaShares(userHolding.uiAmount);
 
-          // Fetch payout token balance on the cluster
+          const ownerPk = new PublicKey(walletAddress);
+
+          // 1. Fetch real USDC balance
           try {
-            const ownerPk = new PublicKey(walletAddress);
+            const usdcMintPk = new PublicKey(
+              rwaConfig.cluster === "devnet"
+                ? KNOWN_PAYOUT_MINTS.devnet.USDC
+                : KNOWN_PAYOUT_MINTS.mainnet.USDC
+            );
+            const usdcAccounts = await connection.getParsedTokenAccountsByOwner(
+              ownerPk,
+              { mint: usdcMintPk }
+            );
+            const totalUsdc = (usdcAccounts.value as ParsedTokenAccount[]).reduce((sum, acc) => {
+              const amt = acc.account?.data?.parsed?.info?.tokenAmount?.uiAmount ?? 0;
+              return sum + Number(amt || 0);
+            }, 0);
+            setUserUsdcBalance(totalUsdc);
+          } catch (err) {
+            console.error("Failed to query USDC balance:", err);
+          }
+
+          // 2. Fetch payout token (e.g. cNGN) balance
+          try {
             const payoutMintPk = overview?.asset?.payoutMint || new PublicKey(rwaConfig.payoutMint);
             const payoutAccounts = await connection.getParsedTokenAccountsByOwner(
               ownerPk,
@@ -144,7 +168,7 @@ const InvestPrivateMarketDetails = () => {
               const amt = acc.account?.data?.parsed?.info?.tokenAmount?.uiAmount ?? 0;
               return sum + Number(amt || 0);
             }, 0);
-            setUserUsdcBalance(totalPayout);
+            setUserCngnBalance(totalPayout);
           } catch (err) {
             console.error("Failed to query payout balance:", err);
           }
@@ -343,9 +367,12 @@ const InvestPrivateMarketDetails = () => {
             {/* Header */}
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
               <div className="flex items-center gap-4">
-                <div className="w-14 h-14 rounded-2xl bg-primary/10 border border-primary/20 flex items-center justify-center text-primary text-xl font-bold">
-                  {rwaConfig.symbol.slice(0, 2)}
-                </div>
+                <Avatar className="w-14 h-14 rounded-2xl border border-primary/20 bg-primary/10">
+                  <AvatarImage src={rwaConfig.icon} alt={rwaConfig.name} className="object-cover" />
+                  <AvatarFallback className="rounded-2xl bg-primary/10 text-primary text-xl font-bold">
+                    {rwaConfig.symbol.slice(0, 2)}
+                  </AvatarFallback>
+                </Avatar>
                 <div>
                   <div className="flex items-center gap-2 flex-wrap">
                     <h1 className="text-2xl font-bold tracking-tight">{rwaConfig.name}</h1>
@@ -369,13 +396,25 @@ const InvestPrivateMarketDetails = () => {
             </div>
 
             {/* Metrics Grid */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
               <div className="bg-secondary/40 border border-border/60 rounded-xl p-3.5 space-y-1">
                 <span className="text-xs text-muted-foreground">Unit Price</span>
                 <p className="text-lg font-bold text-foreground">
                   {rwaConfig.payoutSymbol === "cNGN" ? "₦" : "$"}
                   {unitPrice.toFixed(2)}{" "}
                   <span className="text-xs font-normal text-muted-foreground">{rwaConfig.payoutSymbol}</span>
+                </p>
+              </div>
+
+              <div className="bg-secondary/40 border border-border/60 rounded-xl p-3.5 space-y-1">
+                <span className="text-xs text-muted-foreground">Min. Order</span>
+                <p className="text-lg font-bold text-foreground">
+                  {rwaConfig.minBuyCostPayout
+                    ? `₦${rwaConfig.minBuyCostPayout.toLocaleString()}`
+                    : "—"}
+                  <span className="text-xs font-normal text-muted-foreground block">
+                    {rwaConfig.minBuyShares ? `(${rwaConfig.minBuyShares} ${rwaConfig.symbol})` : ""}
+                  </span>
                 </p>
               </div>
 
@@ -406,7 +445,12 @@ const InvestPrivateMarketDetails = () => {
                   <span className="text-sm font-semibold">Your Position</span>
                 </div>
                 <span className="text-xs text-muted-foreground">
-                  Wallet: {userUsdcBalance !== null ? `${userUsdcBalance.toFixed(2)} ${rwaConfig.payoutSymbol}` : "—"}
+                  Wallet:{" "}
+                  {rwaConfig.payoutSymbol === "cNGN"
+                    ? `${userUsdcBalance !== null ? `${userUsdcBalance.toFixed(2)} USDC` : "—"} · ${userCngnBalance !== null ? `${userCngnBalance.toFixed(2)} cNGN` : "—"}`
+                    : userUsdcBalance !== null
+                    ? `${userUsdcBalance.toFixed(2)} ${rwaConfig.payoutSymbol}`
+                    : "—"}
                 </span>
               </div>
 
@@ -722,6 +766,7 @@ const InvestPrivateMarketDetails = () => {
           tokenConfig={rwaConfig}
           marketOverview={rwaOverview}
           usdcBalance={userUsdcBalance}
+          cngnBalance={userCngnBalance}
           userShares={userRwaShares}
           solanaWallet={solWallet}
           signTransaction={signTransaction}

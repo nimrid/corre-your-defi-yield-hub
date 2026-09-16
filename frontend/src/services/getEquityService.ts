@@ -14,6 +14,9 @@ import {
   PublicKey,
   Transaction,
   TransactionInstruction,
+  TransactionMessage,
+  VersionedTransaction,
+  AddressLookupTableAccount,
 } from "@solana/web3.js";
 import {
   getAssociatedTokenAddressSync,
@@ -1086,3 +1089,407 @@ export async function buildSellTransaction(params: {
 
   return { transaction: tx, quote };
 }
+
+// ─── Jupiter Swap Integration for RWA (USDC -> cNGN -> Asset) ─────────────────
+
+export interface JupiterQuoteResponse {
+  inputMint: string;
+  inAmount: string;
+  outputMint: string;
+  outAmount: string;
+  otherAmountThreshold: string;
+  swapMode: string;
+  slippageBps: number;
+  platformFee: unknown;
+  priceImpactPct: string;
+  routePlan: Array<{
+    swapInfo: {
+      ammKey: string;
+      label: string;
+      inputMint: string;
+      outputMint: string;
+      inAmount: string;
+      outAmount: string;
+      feeAmount: string;
+      feeMint: string;
+    };
+    percent: number;
+  }>;
+  contextSlot?: number;
+  timeTaken?: number;
+}
+
+export interface JupiterInstructionAccount {
+  pubkey: string;
+  isSigner: boolean;
+  isWritable: boolean;
+}
+
+export interface JupiterInstruction {
+  programId: string;
+  accounts: JupiterInstructionAccount[];
+  data: string; // base64 encoded
+}
+
+export interface JupiterSwapInstructionsResponse {
+  tokenLedgerInstruction?: JupiterInstruction | null;
+  computeBudgetInstructions?: JupiterInstruction[];
+  setupInstructions?: JupiterInstruction[];
+  swapInstruction: JupiterInstruction;
+  cleanupInstruction?: JupiterInstruction | null;
+  addressLookupTableAddresses?: string[];
+  prioritizationFeeLamports?: number;
+  computeUnitLimit?: number;
+}
+
+export function getJupiterApiKey(): string {
+  const envKey = (import.meta.env.VITE_JUP_API_KEY as string | undefined)?.trim();
+  return envKey || "7533d7b5-93c3-43ed-942e-08a8142c2dd4";
+}
+
+export function deserializeJupiterInstruction(ix: JupiterInstruction): TransactionInstruction {
+  return new TransactionInstruction({
+    programId: new PublicKey(ix.programId),
+    keys: ix.accounts.map((acc) => ({
+      pubkey: new PublicKey(acc.pubkey),
+      isSigner: acc.isSigner,
+      isWritable: acc.isWritable,
+    })),
+    data: Buffer.from(ix.data, "base64"),
+  });
+}
+
+/**
+ * Queries the Jupiter Swap Quote API for token routing (e.g. USDC -> cNGN).
+ */
+export async function fetchJupiterQuote(params: {
+  inputMint: string;
+  outputMint: string;
+  amountUnits: string | number | bigint;
+  slippageBps?: number;
+}): Promise<JupiterQuoteResponse> {
+  const { inputMint, outputMint, amountUnits, slippageBps = 50 } = params;
+  const apiKey = getJupiterApiKey();
+  const url = `https://api.jup.ag/swap/v1/quote?inputMint=${inputMint}&outputMint=${outputMint}&amount=${amountUnits.toString()}&slippageBps=${slippageBps}`;
+
+  const res = await fetch(url, {
+    method: "GET",
+    headers: {
+      "x-api-key": apiKey,
+    },
+  });
+
+  if (!res.ok) {
+    const errorText = await res.text().catch(() => "");
+    throw new Error(`Jupiter quote error (${res.status}): ${errorText || res.statusText}`);
+  }
+
+  return (await res.json()) as JupiterQuoteResponse;
+}
+
+/**
+ * Requests raw serialized instructions from Jupiter Swap Instructions API.
+ */
+export async function fetchJupiterSwapInstructions(params: {
+  quoteResponse: JupiterQuoteResponse;
+  userPublicKey: string;
+  wrapAndUnwrapSol?: boolean;
+}): Promise<JupiterSwapInstructionsResponse> {
+  const { quoteResponse, userPublicKey, wrapAndUnwrapSol = false } = params;
+  const apiKey = getJupiterApiKey();
+  const url = "https://api.jup.ag/swap/v1/swap-instructions";
+
+  const res = await fetch(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-api-key": apiKey,
+    },
+    body: JSON.stringify({
+      quoteResponse,
+      userPublicKey,
+      wrapAndUnwrapSol,
+      useSharedAccounts: false,
+    }),
+  });
+
+  if (!res.ok) {
+    const errorText = await res.text().catch(() => "");
+    throw new Error(`Jupiter swap instructions error (${res.status}): ${errorText || res.statusText}`);
+  }
+
+  return (await res.json()) as JupiterSwapInstructionsResponse;
+}
+
+/**
+ * Fetches the live exchange rate between USDC and cNGN via Jupiter / Orca Whirlpool.
+ */
+export async function fetchJupiterExchangeRate(
+  inputMint: string = KNOWN_PAYOUT_MINTS.mainnet.USDC,
+  outputMint: string = KNOWN_PAYOUT_MINTS.mainnet.CNGN
+): Promise<{ rate: number; priceImpactPct: number }> {
+  try {
+    const quote = await fetchJupiterQuote({
+      inputMint,
+      outputMint,
+      amountUnits: 1_000_000, // 1 USDC
+      slippageBps: 50,
+    });
+    const rate = Number(quote.outAmount) / 1e6;
+    const priceImpactPct = parseFloat(quote.priceImpactPct) || 0;
+    return { rate, priceImpactPct };
+  } catch (err) {
+    console.error("[fetchJupiterExchangeRate] Failed:", err);
+    return { rate: 1368.95, priceImpactPct: 0 };
+  }
+}
+
+/**
+ * Builds an atomic VersionedTransaction combining:
+ * 1. Jupiter Swap Instructions (USDC -> cNGN via Orca Whirlpool)
+ * 2. Idempotent ATA creation for trader's DPRI (Token-2022)
+ * 3. GetEquity Buy Instruction (cNGN -> DPRI)
+ *
+ * All packed into a single transaction signed once by the user.
+ */
+export async function buildSwapAndBuyTransaction(params: {
+  connection: Connection;
+  trader: PublicKey;
+  mint: PublicKey;
+  spendMode: "usdc" | "shares";
+  inputValue: number;
+  slippageBps?: number;
+  payer?: PublicKey;
+}): Promise<{
+  versionedTransaction: VersionedTransaction;
+  jupQuote: JupiterQuoteResponse;
+  buyQuote: BuyQuote;
+  estimatedUsdcCost: number;
+  estimatedShares: number;
+  cngnProceeds: number;
+}> {
+  const {
+    connection,
+    trader,
+    mint,
+    spendMode,
+    inputValue,
+    slippageBps = 100,
+    payer = trader,
+  } = params;
+
+  const asset = await fetchRwaAsset(connection, mint);
+  if (!asset) {
+    throw new Error(`RWA Asset account not found for mint ${mint.toBase58()}`);
+  }
+
+  if (!asset.isActive) {
+    throw new Error("Asset is currently not active for trading on GetEquity");
+  }
+
+  const payoutMintInfo = await connection.getAccountInfo(asset.payoutMint);
+  const payoutTokenProgram = payoutMintInfo?.owner ?? TOKEN_PROGRAM_ID;
+
+  const usdcMint = KNOWN_PAYOUT_MINTS.mainnet.USDC;
+  const cngnMint = asset.payoutMint.toBase58();
+
+  let jupQuote: JupiterQuoteResponse;
+  let buyQuote: BuyQuote;
+  let estimatedUsdcCost = 0;
+
+  if (spendMode === "usdc") {
+    // User wants to spend a fixed amount of USDC
+    const usdcUnits = BigInt(Math.round(inputValue * 1e6));
+    if (usdcUnits <= 0n) {
+      throw new Error("Invalid USDC amount");
+    }
+
+    jupQuote = await fetchJupiterQuote({
+      inputMint: usdcMint,
+      outputMint: cngnMint,
+      amountUnits: usdcUnits,
+      slippageBps,
+    });
+
+    const minCngnUnits = BigInt(jupQuote.otherAmountThreshold || jupQuote.outAmount);
+    const minCngnDisplay = Number(minCngnUnits) / 1e6;
+
+    buyQuote = calculateBuyQuoteFromPayoutAmount({
+      payoutAmount: minCngnDisplay,
+      asset,
+      rwaDecimals: 6,
+      payoutDecimals: 6,
+      slippageBps,
+    });
+
+    if (buyQuote.amountUnits <= 0n) {
+      throw new Error("USDC amount is too small to purchase any DPRI shares");
+    }
+
+    estimatedUsdcCost = inputValue;
+  } else {
+    // User wants to buy a specific number of DPRI shares
+    buyQuote = calculateBuyQuote({
+      amount: inputValue,
+      asset,
+      rwaDecimals: 6,
+      payoutDecimals: 6,
+      slippageBps,
+    });
+
+    if (buyQuote.amountUnits <= 0n) {
+      throw new Error("Invalid shares amount");
+    }
+
+    // Probe quote to get the live exchange rate
+    const probeQuote = await fetchJupiterQuote({
+      inputMint: usdcMint,
+      outputMint: cngnMint,
+      amountUnits: 1_000_000, // 1 USDC
+      slippageBps,
+    });
+
+    const probeOutUnits = Number(probeQuote.outAmount);
+    if (probeOutUnits <= 0) {
+      throw new Error("Failed to get cNGN exchange rate from Jupiter");
+    }
+
+    // Calculate required USDC with 0.8% buffer to guarantee otherAmountThreshold >= maxCostUnits
+    const targetCngnUnits = Number(buyQuote.maxCostUnits);
+    let estimatedUsdcUnits = Math.ceil((targetCngnUnits / probeOutUnits) * 1_000_000 * 1.008);
+
+    jupQuote = await fetchJupiterQuote({
+      inputMint: usdcMint,
+      outputMint: cngnMint,
+      amountUnits: estimatedUsdcUnits,
+      slippageBps,
+    });
+
+    // If min output threshold is slightly below target cost, bump by 1%
+    if (BigInt(jupQuote.otherAmountThreshold) < buyQuote.maxCostUnits) {
+      estimatedUsdcUnits = Math.ceil(estimatedUsdcUnits * 1.015);
+      jupQuote = await fetchJupiterQuote({
+        inputMint: usdcMint,
+        outputMint: cngnMint,
+        amountUnits: estimatedUsdcUnits,
+        slippageBps,
+      });
+    }
+
+    estimatedUsdcCost = Number(jupQuote.inAmount) / 1e6;
+  }
+
+  // Request swap instructions from Jupiter
+  const swapIxs = await fetchJupiterSwapInstructions({
+    quoteResponse: jupQuote,
+    userPublicKey: trader.toBase58(),
+    wrapAndUnwrapSol: false,
+  });
+
+  // Resolve Address Lookup Tables
+  const altAccounts: AddressLookupTableAccount[] = [];
+  if (swapIxs.addressLookupTableAddresses && swapIxs.addressLookupTableAddresses.length > 0) {
+    for (const altAddr of swapIxs.addressLookupTableAddresses) {
+      try {
+        const altRes = await connection.getAddressLookupTable(new PublicKey(altAddr));
+        if (altRes.value) {
+          altAccounts.push(altRes.value);
+        }
+      } catch (err) {
+        console.warn("[buildSwapAndBuyTransaction] ALT resolution error:", altAddr, err);
+      }
+    }
+  }
+
+  // Detect Token-2022 Transfer Hook extension for DPRI
+  let hookProgramId: PublicKey | null = null;
+  try {
+    const mintInfo = await connection.getAccountInfo(mint);
+    if (mintInfo) {
+      const unpacked = unpackMint(mint, mintInfo, TOKEN_2022_PROGRAM_ID);
+      const hook = getTransferHook(unpacked);
+      if (hook?.programId) {
+        hookProgramId = hook.programId;
+      }
+    }
+  } catch (err) {
+    console.debug("[buildSwapAndBuyTransaction] Transfer hook check:", err);
+  }
+
+  // Assemble instructions in order
+  const instructions: TransactionInstruction[] = [];
+
+  // 1. Compute Budget
+  if (swapIxs.computeBudgetInstructions) {
+    for (const ix of swapIxs.computeBudgetInstructions) {
+      instructions.push(deserializeJupiterInstruction(ix));
+    }
+  }
+
+  // 2. Setup (creates cNGN ATA if not exists)
+  if (swapIxs.setupInstructions) {
+    for (const ix of swapIxs.setupInstructions) {
+      instructions.push(deserializeJupiterInstruction(ix));
+    }
+  }
+
+  // 3. Jupiter Swap (USDC -> cNGN)
+  if (swapIxs.swapInstruction) {
+    instructions.push(deserializeJupiterInstruction(swapIxs.swapInstruction));
+  }
+
+  // 4. Idempotent create trader DPRI ATA (Token-2022)
+  const traderRwaAta = getAssociatedTokenAddressSync(
+    mint,
+    trader,
+    false,
+    TOKEN_2022_PROGRAM_ID
+  );
+  instructions.push(
+    createAssociatedTokenAccountIdempotentInstruction(
+      payer,
+      traderRwaAta,
+      trader,
+      mint,
+      TOKEN_2022_PROGRAM_ID
+    )
+  );
+
+  // 5. GetEquity Buy instruction (cNGN -> DPRI)
+  instructions.push(
+    createBuyInstruction({
+      trader,
+      mint,
+      asset,
+      amountUnits: buyQuote.amountUnits,
+      maxCostUnits: buyQuote.maxCostUnits,
+      payoutTokenProgram,
+      hookProgramId,
+    })
+  );
+
+  // 6. Cleanup (if any)
+  if (swapIxs.cleanupInstruction) {
+    instructions.push(deserializeJupiterInstruction(swapIxs.cleanupInstruction));
+  }
+
+  // Build TransactionMessage v0 with Address Lookup Tables
+  const latestBlockhash = await connection.getLatestBlockhash("confirmed");
+  const messageV0 = new TransactionMessage({
+    payerKey: payer,
+    recentBlockhash: latestBlockhash.blockhash,
+    instructions,
+  }).compileToV0Message(altAccounts);
+
+  const versionedTransaction = new VersionedTransaction(messageV0);
+
+  return {
+    versionedTransaction,
+    jupQuote,
+    buyQuote,
+    estimatedUsdcCost,
+    estimatedShares: buyQuote.amountDisplay,
+    cngnProceeds: Number(jupQuote.outAmount) / 1e6,
+  };
+}
+

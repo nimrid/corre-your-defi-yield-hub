@@ -14,6 +14,8 @@ export interface RwaTokenConfig {
   dealUrl?: string;
   cluster: "mainnet-beta" | "devnet";
   icon?: string;
+  minBuyCostPayout?: number;
+  minBuyShares?: number;
 }
 
 export const RWA_TOKENS: RwaTokenConfig[] = [
@@ -36,6 +38,9 @@ export const RWA_TOKENS: RwaTokenConfig[] = [
     location: "Lagos, Nigeria",
     description: "Pre-IPO equity allocation in the Dangote Petroleum Refinery complex.",
     cluster: "mainnet-beta",
+    icon: "https://res.cloudinary.com/djalafcj9/image/upload/v1789376611/getequity/profiles/user/kmtjh3f6nlvsyup1hqpu.png",
+    minBuyCostPayout: 5250, // ₦5,250 cNGN
+    minBuyShares: 10, // 10 DPRI shares
   },
 ];
 
