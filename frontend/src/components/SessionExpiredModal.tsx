@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { usePrivy } from "@privy-io/react-auth";
 import {
   Dialog,
@@ -21,18 +21,20 @@ export function SessionExpiredModal({
   onReconnect,
 }: SessionExpiredModalProps) {
   const { login, authenticated } = usePrivy();
-  const [isReconnecting, setIsReconnecting] = useState(false);
 
-  const handleReconnect = async () => {
-    setIsReconnecting(true);
-    try {
-      await login();
-      onReconnect?.();
-    } catch (error) {
-      console.error("[SessionExpiredModal] Reconnect failed:", error);
-    } finally {
-      setIsReconnecting(false);
-    }
+  const handleReconnect = () => {
+    // Dismiss the dialog first so Radix releases its focus trap and body locks,
+    // allowing the Privy login modal to receive pointer and keyboard events.
+    onOpenChange(false);
+
+    setTimeout(() => {
+      try {
+        login();
+        onReconnect?.();
+      } catch (error) {
+        console.error("[SessionExpiredModal] Reconnect failed:", error);
+      }
+    }, 50);
   };
 
   // Auto-close when authenticated
@@ -60,7 +62,6 @@ export function SessionExpiredModal({
             variant="outline"
             className="flex-1"
             onClick={() => onOpenChange(false)}
-            disabled={isReconnecting}
           >
             Not now
           </Button>
@@ -68,9 +69,8 @@ export function SessionExpiredModal({
             type="button"
             className="flex-1"
             onClick={handleReconnect}
-            disabled={isReconnecting}
           >
-            {isReconnecting ? "Reconnecting..." : "Reconnect"}
+            Reconnect
           </Button>
         </div>
       </DialogContent>

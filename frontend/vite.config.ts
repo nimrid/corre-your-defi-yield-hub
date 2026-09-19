@@ -40,7 +40,7 @@ export default defineConfig(({ mode }) => {
   plugins: [
     react(),
     VitePWA({
-      registerType: "autoUpdate",
+      selfDestroying: true,
       includeAssets: [
         "robots.txt",
         "placeholder.svg",
@@ -68,38 +68,6 @@ export default defineConfig(({ mode }) => {
             sizes: "512x512",
             type: "image/png",
             purpose: "any maskable",
-          },
-        ],
-      },
-      workbox: {
-        skipWaiting: true,
-        clientsClaim: true,
-        maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
-        runtimeCaching: [
-          {
-            urlPattern: ({ request }) => request.destination === "document",
-            handler: "NetworkFirst",
-            options: {
-              cacheName: "html-cache",
-            },
-          },
-          {
-            urlPattern: ({ request }) => request.destination === "script" || request.destination === "style",
-            handler: "NetworkFirst",
-            options: {
-              cacheName: "static-resources",
-            },
-          },
-          {
-            urlPattern: ({ request }) => request.destination === "image",
-            handler: "CacheFirst",
-            options: {
-              cacheName: "image-cache",
-              expiration: {
-                maxEntries: 60,
-                maxAgeSeconds: 30 * 24 * 60 * 60,
-              },
-            },
           },
         ],
       },

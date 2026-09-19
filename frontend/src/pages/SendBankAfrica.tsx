@@ -23,6 +23,7 @@ import { cn } from "@/lib/utils";
 import { usePajSession } from "@/hooks/usePajSession";
 import { PajSessionModal } from "@/components/PajSessionModal";
 import { usePrivy } from "@privy-io/react-auth";
+import { calculatePlatformFee, MARKUP_PERCENT, MIN_PLATFORM_FEE_USDC } from "@/utils/feeCalculator";
 import { useWallets as useSolanaWallets } from "@privy-io/react-auth/solana";
 import { webhookUrl, apiFetch } from "@/services/apiClient";
 
@@ -147,15 +148,17 @@ const SendBankAfrica = () => {
     }
     setEstimating(true);
     if (baseRate) {
-      const netUSDC = Math.max(0, numAmount - PAJ_OFFRAMP_FEE);
+      const fee = calculatePlatformFee(numAmount);
+      const netUSDC = Math.max(0, numAmount - fee);
       setEstimatedNaira((netUSDC * baseRate).toFixed(2));
     }
     setEstimating(false);
   }, [amountUSDC, baseRate]);
 
   const numUSDC = Number(amountUSDC);
+  const currentFee = calculatePlatformFee(numUSDC);
   const isExceedingBalance = walletUsdcBalance !== null && numUSDC > walletUsdcBalance;
-  const isBelowMinimum = numUSDC > 0 && numUSDC <= PAJ_OFFRAMP_FEE;
+  const isBelowMinimum = numUSDC > 0 && numUSDC <= currentFee;
 
   const handleOpenDialog = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -326,6 +329,7 @@ const SendBankAfrica = () => {
         webhookURL: webhookUrl("/webhook/paj-ramp"),
       });
 
+      const dynamicFee = calculatePlatformFee(Number(amountUSDC));
       const order = await createOfframpOrder(
         {
           bank: bankInstId,
@@ -335,7 +339,8 @@ const SendBankAfrica = () => {
           mint: USDC_MINT,
           chain: Chain.SOLANA,
           webhookURL: webhookUrl("/webhook/paj-ramp"),
-          businessUSDCFee: 0.5,
+          fee: dynamicFee,
+          businessUSDCFee: dynamicFee,
         } as any,
         token,
       );
@@ -658,7 +663,7 @@ const SendBankAfrica = () => {
 
               {isBelowMinimum && (
                 <p className="text-xs text-amber-500 font-medium mt-1">
-                  Amount must be greater than the 0.50 USDC platform fee.
+                  Amount must be greater than the {currentFee.toFixed(2)} USDC platform fee.
                 </p>
               )}
 
@@ -677,7 +682,12 @@ const SendBankAfrica = () => {
                 </div>
                 <div className="flex justify-between items-center text-muted-foreground">
                   <span>Platform Fee:</span>
-                  <span className="font-semibold text-foreground">0.50 USDC</span>
+                  <span className="font-semibold text-foreground">
+                    {currentFee.toFixed(2)} USDC
+                    <span className="text-[10px] text-muted-foreground ml-1">
+                      ({(MARKUP_PERCENT * 100).toFixed(0)}%, min {MIN_PLATFORM_FEE_USDC.toFixed(2)})
+                    </span>
+                  </span>
                 </div>
                 <div className="flex justify-between items-center text-muted-foreground pt-1 border-t border-border/20">
                   <span>Estimated Payout:</span>
@@ -917,13 +927,18 @@ const SendBankAfrica = () => {
 
                   <div className="flex justify-between items-center text-muted-foreground">
                     <span>Platform Fee</span>
-                    <span className="font-semibold text-foreground">0.50 USDC</span>
+                    <span className="font-semibold text-foreground">
+                      {currentFee.toFixed(2)} USDC
+                      <span className="text-[10px] text-muted-foreground ml-1">
+                        ({(MARKUP_PERCENT * 100).toFixed(0)}%, min {MIN_PLATFORM_FEE_USDC.toFixed(2)})
+                      </span>
+                    </span>
                   </div>
 
                   <div className="flex justify-between items-center text-muted-foreground">
                     <span>Net USDC Exchanged</span>
                     <span className="font-semibold text-foreground">
-                      {Math.max(0, numUSDC - 0.5).toFixed(2)} USDC
+                      {Math.max(0, numUSDC - currentFee).toFixed(2)} USDC
                     </span>
                   </div>
 
@@ -1024,7 +1039,7 @@ const SendBankAfrica = () => {
                     )}
                     {createdOrder?.fee !== undefined && (
                       <div>
-                        <p className="font-medium text-foreground">{createdOrder.fee} USDC</p>
+                        <p className="font-medium text-foreground">{(createdOrder.fee || currentFee).toFixed(2)} USDC</p>
                         <p>Fee</p>
                       </div>
                     )}

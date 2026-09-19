@@ -1,11 +1,20 @@
 import Navigation from "@/components/Navigation";
 import { usePrivy, useWallets } from "@privy-io/react-auth";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
-import { Copy, ChevronDown, QrCode, Plus, Wallet, ExternalLink, ShieldCheck } from "lucide-react";
+import { Copy, ChevronDown, QrCode, Plus, Wallet, ExternalLink, ShieldCheck, RefreshCw } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { US_STOCK_TOKENS } from "@/config/usStockTokens";
+import { RWA_TOKENS } from "@/config/rwaTokens";
+import {
+  getGetEquityConnection,
+  fetchUserRwaHolding,
+  fetchRwaAsset,
+  fetchJupiterExchangeRate,
+} from "@/services/getEquityService";
+import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
+import { Badge } from "@/components/ui/badge";
 import { QRCodeSVG } from "qrcode.react";
 import {
   Dialog,
@@ -32,6 +41,12 @@ interface StockHolding {
   symbol: string;
   amount: number;
   usdValue?: number;
+  icon?: string;
+  category?: string;
+  url?: string;
+  isRwa?: boolean;
+  localValue?: number;
+  localSymbol?: string;
 }
 
 
@@ -136,115 +151,173 @@ const Home = () => {
     void syncUser();
   }, [ready, authenticated, user]);
 
-  useEffect(() => {
-    const fetchStocks = async () => {
-      if (!stocksOpen) return;
+  const fetchStocks = useCallback(
+    async (forceRefresh = false) => {
       if (!primarySolanaAddress) return;
-      if (stockBalances !== null || stocksLoading) return;
+      if (!forceRefresh && stockBalances !== null) return;
 
       try {
         setStocksLoading(true);
         setStocksError(null);
+
+        const amountsByMint: Record<string, number> = {};
+
+        // 1. Fetch DAS assets for US stock tokens
         const HELIUS_DAS_URL =
           import.meta.env.VITE_HELIUS_DAS_URL ||
           import.meta.env.VITE_SOLANA_DAS_URL ||
           "";
 
-        if (!HELIUS_DAS_URL) {
-          setStocksError("Helius DAS URL is not configured");
-          return;
-        }
-
-        const response = await fetch(HELIUS_DAS_URL, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            jsonrpc: "2.0",
-            id: "stocks-portfolio",
-            method: "getAssetsByOwner",
-            params: {
-              ownerAddress: primarySolanaAddress,
-              page: 1,
-              limit: 1000,
-              displayOptions: {
-                showFungible: true,
-                showNativeBalance: false,
+        if (HELIUS_DAS_URL) {
+          try {
+            const response = await fetch(HELIUS_DAS_URL, {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
               },
-            },
-          }),
-        });
+              body: JSON.stringify({
+                jsonrpc: "2.0",
+                id: "stocks-portfolio",
+                method: "getAssetsByOwner",
+                params: {
+                  ownerAddress: primarySolanaAddress,
+                  page: 1,
+                  limit: 1000,
+                  displayOptions: {
+                    showFungible: true,
+                    showNativeBalance: false,
+                  },
+                },
+              }),
+            });
 
-        if (!response.ok) {
-          throw new Error(`Helius DAS request failed with ${response.status}`);
+            if (response.ok) {
+              const data: any = await response.json();
+              const items: any[] = data?.result?.items ?? [];
+
+              for (const asset of items) {
+                const mint: string | undefined = asset?.id;
+                if (!mint) continue;
+
+                const tokenInfo: any = asset.token_info ?? asset?.tokenInfo ?? {};
+                const rawBalance = tokenInfo.balance;
+                const decimals =
+                  typeof tokenInfo.decimals === "number" ? tokenInfo.decimals : 0;
+
+                if (rawBalance == null) continue;
+
+                const asNumber =
+                  typeof rawBalance === "number"
+                    ? rawBalance
+                    : Number(rawBalance);
+                if (Number.isNaN(asNumber)) continue;
+
+                const uiAmount = decimals ? asNumber / 10 ** decimals : asNumber;
+                amountsByMint[mint] = (amountsByMint[mint] ?? 0) + uiAmount;
+              }
+            }
+          } catch (dasErr) {
+            console.warn("Helius DAS query failed:", dasErr);
+          }
         }
 
-        const data: any = await response.json();
-        const items: any[] = data?.result?.items ?? [];
+        // 2. Fetch RWA Private Market holdings (e.g. Dangote Petroleum Refinery IPO - DPRI)
+        const rwaHoldings: StockHolding[] = [];
+        const rwaConnection = getGetEquityConnection("mainnet-beta");
 
-        const amountsByMint: Record<string, number> = {};
+        await Promise.all(
+          RWA_TOKENS.map(async (token) => {
+            try {
+              // Direct on-chain Token-2022 balance check ensures real-time accuracy with zero indexing lag
+              const onChain = await fetchUserRwaHolding(
+                rwaConnection,
+                primarySolanaAddress,
+                token.mint
+              );
+              const dasAmount = amountsByMint[token.mint] ?? 0;
+              const finalAmount = Math.max(dasAmount, onChain.uiAmount);
 
-        for (const asset of items) {
-          const mint: string | undefined = asset?.id;
-          if (!mint) continue;
+              if (finalAmount > 0) {
+                let unitPriceCngn = 525;
+                try {
+                  const asset = await fetchRwaAsset(rwaConnection, token.mint);
+                  if (asset?.priceCents) {
+                    unitPriceCngn = Number(asset.priceCents) / 100;
+                  }
+                } catch {
+                  // Fallback to default asset unit price
+                }
 
-          const tokenInfo: any = asset.token_info ?? asset?.tokenInfo ?? {};
-          const rawBalance = tokenInfo.balance;
-          const decimals =
-            typeof tokenInfo.decimals === "number" ? tokenInfo.decimals : 0;
+                const jupRes = await fetchJupiterExchangeRate().catch(() => ({ rate: 1370, priceImpactPct: 0 }));
+                const jupRate = jupRes?.rate > 0 ? jupRes.rate : 1370;
 
-          if (rawBalance == null) continue;
+                const totalCngn = finalAmount * unitPriceCngn;
+                const estUsd = jupRate > 0 ? totalCngn / jupRate : 0;
 
-          const asNumber =
-            typeof rawBalance === "number"
-              ? rawBalance
-              : Number(rawBalance);
-          if (Number.isNaN(asNumber)) continue;
+                rwaHoldings.push({
+                  mint: token.mint,
+                  name: token.name,
+                  symbol: token.symbol,
+                  amount: finalAmount,
+                  usdValue: estUsd,
+                  localValue: totalCngn,
+                  localSymbol: token.payoutSymbol,
+                  icon: token.icon,
+                  category: token.category,
+                  url: `/invest/private-market/${token.id}`,
+                  isRwa: true,
+                });
+              }
+            } catch (rwaErr) {
+              console.warn(`Failed to fetch RWA holding for ${token.symbol}:`, rwaErr);
+            }
+          })
+        );
 
-          const uiAmount = decimals ? asNumber / 10 ** decimals : asNumber;
-          amountsByMint[mint] = (amountsByMint[mint] ?? 0) + uiAmount;
-        }
-
-        const holdings: StockHolding[] = US_STOCK_TOKENS.map((token) => ({
+        // 3. Process US Stock holdings
+        const usHoldings: StockHolding[] = US_STOCK_TOKENS.map((token) => ({
           mint: token.mint,
           name: token.name,
           symbol: token.symbol,
           amount: amountsByMint[token.mint] ?? 0,
-        }))
-          .filter((h) => h.amount > 0)
-          .sort((a, b) => b.amount - a.amount);
+          url: `/invest/us-stocks/${token.symbol.toLowerCase()}`,
+          isRwa: false,
+        })).filter((h) => h.amount > 0);
 
-        // Fetch prices to estimate USDC value
-        if (holdings.length > 0) {
-          try {
-            await Promise.all(
-              holdings.map(async (holding) => {
-                try {
-                  const asset = await fetchTokensAsset(holding.mint);
-                  if (asset.price != null) {
-                    holding.usdValue = holding.amount * asset.price;
-                  }
-                } catch (e) {
-                  console.warn(`Failed to fetch price for ${holding.symbol}`, e);
+        if (usHoldings.length > 0) {
+          await Promise.all(
+            usHoldings.map(async (holding) => {
+              try {
+                const asset = await fetchTokensAsset(holding.mint);
+                if (asset.price != null) {
+                  holding.usdValue = holding.amount * asset.price;
                 }
-              })
-            );
-          } catch (e) {
-            console.error("Error fetching holding prices", e);
-          }
+              } catch (e) {
+                console.warn(`Failed to fetch price for ${holding.symbol}`, e);
+              }
+            })
+          );
         }
 
-        setStockBalances(holdings);
+        const combined = [...rwaHoldings, ...usHoldings].sort(
+          (a, b) => (b.usdValue ?? 0) - (a.usdValue ?? 0)
+        );
+
+        setStockBalances(combined);
       } catch (err: any) {
         setStocksError(err?.message ?? "Failed to load stocks portfolio");
       } finally {
         setStocksLoading(false);
       }
-    };
+    },
+    [primarySolanaAddress, stockBalances]
+  );
 
-    void fetchStocks();
-  }, [stocksOpen, primarySolanaAddress, stockBalances, stocksLoading]);
+  useEffect(() => {
+    if (primarySolanaAddress && (stocksOpen || stockBalances === null)) {
+      void fetchStocks();
+    }
+  }, [stocksOpen, primarySolanaAddress, fetchStocks, stockBalances]);
 
   return (
     <div className="min-h-screen bg-background text-foreground">
@@ -348,7 +421,25 @@ const Home = () => {
 
             <div className="glass-card p-6 order-3 md:order-3">
               <div className="flex items-center justify-between mb-4">
-                <h2 className="text-2xl font-semibold">Stocks portfolio</h2>
+                <div className="flex items-center gap-2">
+                  <h2 className="text-2xl font-semibold">Stocks portfolio</h2>
+                  {primarySolanaAddress && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        void fetchStocks(true);
+                      }}
+                      disabled={stocksLoading}
+                      className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-secondary/60 transition-colors"
+                      title="Refresh holdings"
+                    >
+                      <RefreshCw
+                        className={`w-4 h-4 ${stocksLoading ? "animate-spin text-primary" : ""}`}
+                      />
+                    </button>
+                  )}
+                </div>
                 <button
                   type="button"
                   onClick={() => setStocksOpen((prev) => !prev)}
@@ -363,22 +454,31 @@ const Home = () => {
 
               {!primarySolanaAddress && (
                 <p className="text-sm text-muted-foreground">
-                  Connect a Solana wallet to see your stock tokens.
+                  Connect a Solana wallet to see your stock and equity tokens.
                 </p>
               )}
 
               {primarySolanaAddress && !stocksOpen && (
-                <p className="text-sm text-muted-foreground">
-                  View balances for your tokenized US stock positions held in your
-                  Solana wallet.
-                </p>
+                <div className="space-y-1">
+                  <p className="text-sm text-muted-foreground">
+                    View balances for your tokenized US stocks and private market equity positions held in your
+                    Solana wallet.
+                  </p>
+                  {stockBalances && stockBalances.length > 0 && (
+                    <p className="text-xs font-medium text-primary flex items-center gap-1.5 pt-1">
+                      <span className="inline-block w-2 h-2 rounded-full bg-primary" />
+                      {stockBalances.length} active position{stockBalances.length > 1 ? "s" : ""} in wallet
+                    </p>
+                  )}
+                </div>
               )}
 
               {primarySolanaAddress && stocksOpen && (
                 <div className="space-y-4">
-                  {stocksLoading && (
-                    <p className="text-sm text-muted-foreground">
-                      Loading stock balances...
+                  {stocksLoading && !stockBalances && (
+                    <p className="text-sm text-muted-foreground flex items-center gap-2">
+                      <RefreshCw className="w-3.5 h-3.5 animate-spin text-primary" />
+                      <span>Loading stock & equity balances...</span>
                     </p>
                   )}
 
@@ -386,31 +486,53 @@ const Home = () => {
                     <p className="text-sm text-red-500 break-words">{stocksError}</p>
                   )}
 
-                  {!stocksLoading && !stocksError && (
+                  {!stocksError && (
                     <>
                       {!stockBalances?.length ? (
-                        <p className="text-sm text-muted-foreground">
-                          No supported stock tokens found in your Solana wallet.
-                        </p>
+                        stocksLoading ? null : (
+                          <p className="text-sm text-muted-foreground">
+                            No supported stock or private equity tokens found in your Solana wallet.
+                          </p>
+                        )
                       ) : (
                         <div className="space-y-2">
                           <p className="text-sm text-muted-foreground">
-                            Top Stocks holdings in your wallet and current value
+                            Active Stock & Equity holdings in your wallet
                           </p>
                           <ul className="space-y-2">
                             {stockBalances.slice(0, 5).map((holding) => (
                               <li
                                 key={holding.mint}
-                                className="flex items-center justify-between rounded-lg bg-secondary/30 px-3 py-2 text-sm"
+                                className="flex items-center justify-between rounded-xl bg-secondary/30 hover:bg-secondary/50 p-3 text-sm cursor-pointer transition-colors border border-border/40 hover:border-border/80"
+                                onClick={() => {
+                                  if (holding.url) {
+                                    navigate(holding.url);
+                                  }
+                                }}
                               >
-                                <div className="flex flex-col">
-                                  <span className="font-medium">{holding.name}</span>
-                                  <span className="text-xs text-muted-foreground uppercase tracking-wide">
-                                    {holding.symbol}
-                                  </span>
+                                <div className="flex items-center gap-3 min-w-0">
+                                  <Avatar className="w-9 h-9 rounded-xl border border-primary/20 bg-primary/10 flex-shrink-0">
+                                    <AvatarImage src={holding.icon} alt={holding.symbol} className="object-cover" />
+                                    <AvatarFallback className="rounded-xl bg-primary/10 text-primary text-xs font-bold">
+                                      {holding.symbol.slice(0, 2)}
+                                    </AvatarFallback>
+                                  </Avatar>
+                                  <div className="flex flex-col min-w-0">
+                                    <div className="flex items-center gap-1.5 flex-wrap">
+                                      <span className="font-semibold truncate text-foreground">{holding.name}</span>
+                                      {holding.category && (
+                                        <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4 bg-primary/5 text-primary border-primary/20">
+                                          {holding.category}
+                                        </Badge>
+                                      )}
+                                    </div>
+                                    <span className="text-xs text-muted-foreground uppercase tracking-wide">
+                                      {holding.symbol}
+                                    </span>
+                                  </div>
                                 </div>
-                                <div className="flex flex-col text-right">
-                                  <span className="font-mono">
+                                <div className="flex flex-col text-right flex-shrink-0 ml-3">
+                                  <span className="font-mono font-semibold text-foreground">
                                     {holding.amount.toLocaleString(undefined, {
                                       maximumFractionDigits: 4,
                                     })}
@@ -418,13 +540,18 @@ const Home = () => {
                                   {holding.usdValue != null && (
                                     <span className="text-xs text-muted-foreground mt-0.5">
                                       ≈ ${holding.usdValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USDC
+                                      {holding.localValue != null && holding.localSymbol === "cNGN" && (
+                                        <span className="block text-[11px] text-muted-foreground/80">
+                                          (₦{holding.localValue.toLocaleString(undefined, { maximumFractionDigits: 2 })})
+                                        </span>
+                                      )}
                                     </span>
                                   )}
                                 </div>
                               </li>
                             ))}
                             {stockBalances.length > 5 && (
-                              <li className="text-xs text-muted-foreground">
+                              <li className="text-xs text-muted-foreground pt-1">
                                 + {stockBalances.length - 5} more holdings
                               </li>
                             )}
@@ -432,7 +559,7 @@ const Home = () => {
                         </div>
                       )}
 
-                      <div className="pt-2">
+                      <div className="pt-2 flex items-center gap-2 flex-wrap">
                         <Button
                           type="button"
                           size="sm"
@@ -440,6 +567,15 @@ const Home = () => {
                           onClick={() => navigate("/invest/us-stocks")}
                         >
                           Browse US stocks
+                        </Button>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          className="rounded-full text-xs font-semibold"
+                          onClick={() => navigate("/invest/private-market")}
+                        >
+                          Browse Private Market
                         </Button>
                       </div>
                     </>

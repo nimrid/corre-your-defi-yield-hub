@@ -21,12 +21,17 @@
   status = 200
 
 [[headers]]
-  for = "/index.html"
+  for = "/*"
   [headers.values]
     Cache-Control = "no-cache, no-store, must-revalidate"
 
 [[headers]]
   for = "/sw.js"
+  [headers.values]
+    Cache-Control = "no-cache, no-store, must-revalidate"
+
+[[headers]]
+  for = "/registerSW.js"
   [headers.values]
     Cache-Control = "no-cache, no-store, must-revalidate"
 

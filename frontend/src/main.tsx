@@ -4,6 +4,47 @@ import App from "./App.tsx";
 import "./index.css";
 import "./i18n";
 
+// Auto-recover from stale dynamic chunk imports when a new build is deployed mid-session
+window.addEventListener("vite:preloadError", (event) => {
+  console.warn("New version detected or chunk load failed. Reloading to update...", event);
+  window.location.reload();
+});
+
+// Clean up any lingering service workers and Workbox caches from previous PWA builds
+if (typeof window !== "undefined" && "serviceWorker" in navigator) {
+  navigator.serviceWorker.getRegistrations().then((registrations) => {
+    for (const registration of registrations) {
+      const scriptURL =
+        registration.active?.scriptURL ||
+        registration.installing?.scriptURL ||
+        registration.waiting?.scriptURL ||
+        "";
+      if (
+        scriptURL.includes("sw.js") ||
+        scriptURL.includes("workbox") ||
+        (scriptURL && !scriptURL.includes("OneSignalSDKWorker"))
+      ) {
+        registration.unregister().catch(() => {});
+      }
+    }
+  }).catch(() => {});
+
+  if ("caches" in window) {
+    caches.keys().then((names) => {
+      for (const name of names) {
+        if (
+          name.includes("workbox") ||
+          name.includes("html-cache") ||
+          name.includes("static-resources") ||
+          name.includes("image-cache")
+        ) {
+          caches.delete(name).catch(() => {});
+        }
+      }
+    }).catch(() => {});
+  }
+}
+
 import { PrivyProvider } from "@privy-io/react-auth";
 import React from "react";
 import { base, lisk } from "viem/chains";
@@ -42,12 +83,12 @@ createRoot(document.getElementById("root")!).render(
         solana: {
           rpcs: {
             "solana:mainnet": {
-              rpc: createSolanaRpc(SOLANA_HTTP_RPC),
-              rpcSubscriptions: createSolanaRpcSubscriptions(SOLANA_WS_RPC),
+              rpc: createSolanaRpc(SOLANA_HTTP_RPC) as any,
+              rpcSubscriptions: createSolanaRpcSubscriptions(SOLANA_WS_RPC) as any,
             },
             "solana:devnet": {
-              rpc: createSolanaRpc(SOLANA_DEVNET_HTTP_RPC),
-              rpcSubscriptions: createSolanaRpcSubscriptions(SOLANA_DEVNET_WS_RPC),
+              rpc: createSolanaRpc(SOLANA_DEVNET_HTTP_RPC) as any,
+              rpcSubscriptions: createSolanaRpcSubscriptions(SOLANA_DEVNET_WS_RPC) as any,
             },
           },
         },

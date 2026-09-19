@@ -8,6 +8,7 @@ import { usePrivy, useWallets } from "@privy-io/react-auth";
 import { webhookUrl } from "@/services/apiClient";
 import { usePajSession } from "@/hooks/usePajSession";
 import { PajSessionModal } from "@/components/PajSessionModal";
+import { calculatePlatformFee, MARKUP_PERCENT, MIN_PLATFORM_FEE_USDC } from "@/utils/feeCalculator";
 
 const BuyUSDCNaira = () => {
     const navigate = useNavigate();
@@ -57,14 +58,17 @@ const BuyUSDCNaira = () => {
         fetchBaseRate();
     }, []);
 
-    // Calculate estimated USDC locally from the base rate — no extra API call needed
+    // Calculate estimated USDC locally from the base rate — deducting the dynamic hybrid platform fee
     useEffect(() => {
         const numAmount = Number(amountNaira);
         if (!numAmount || numAmount < 1000 || !baseRate) {
             setEstimatedUSDC("");
             return;
         }
-        setEstimatedUSDC((numAmount / baseRate).toFixed(2));
+        const grossUSDC = numAmount / baseRate;
+        const fee = calculatePlatformFee(grossUSDC);
+        const netUSDC = Math.max(0, grossUSDC - fee);
+        setEstimatedUSDC(netUSDC.toFixed(2));
     }, [amountNaira, baseRate]);
 
     const handleBuy = async (e: React.FormEvent) => {
@@ -120,6 +124,9 @@ const BuyUSDCNaira = () => {
                 }
             }
 
+            const grossUSDC = baseRate ? numAmount / baseRate : 0;
+            const fee = calculatePlatformFee(grossUSDC);
+
             const newOrder = await createOnrampOrder(
                 {
                     fiatAmount: numAmount,
@@ -128,7 +135,8 @@ const BuyUSDCNaira = () => {
                     mint: USDC_MINT,
                     chain: Chain.SOLANA,
                     webhookURL: webhookUrl("/webhook/paj-ramp"),
-                    businessUSDCFee: 0.5,
+                    fee,
+                    businessUSDCFee: fee,
                 } as any,
                 token
             );
@@ -216,7 +224,12 @@ const BuyUSDCNaira = () => {
                                 {baseRate && Number(amountNaira) >= 1000 && (
                                     <div className="bg-secondary/40 rounded-lg p-2.5 mt-3 text-xs flex justify-between items-center text-muted-foreground border border-border/40">
                                         <span>Platform Fee:</span>
-                                        <span className="font-semibold text-foreground">0.50 USDC</span>
+                                        <span className="font-semibold text-foreground">
+                                            {calculatePlatformFee(Number(amountNaira) / baseRate).toFixed(2)} USDC
+                                            <span className="text-[10px] text-muted-foreground ml-1">
+                                                ({(MARKUP_PERCENT * 100).toFixed(0)}%, min {MIN_PLATFORM_FEE_USDC.toFixed(2)})
+                                            </span>
+                                        </span>
                                     </div>
                                 )}
                                 {orderError && (
@@ -272,7 +285,7 @@ const BuyUSDCNaira = () => {
                                 </div>
                                 <div className="border-t border-border/40 pt-3 flex justify-between items-center text-xs">
                                     <span className="text-muted-foreground">Platform Fee</span>
-                                    <span className="font-medium">{order.fee ?? 0.5} USDC</span>
+                                    <span className="font-medium">{(order.fee || 0.5)} USDC</span>
                                 </div>
                             </div>
 
