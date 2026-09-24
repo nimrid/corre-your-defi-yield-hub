@@ -95,6 +95,7 @@ const InvestPrivateMarketDetails = () => {
   const [userRwaShares, setUserRwaShares] = useState<number | null>(null);
   const [userUsdcBalance, setUserUsdcBalance] = useState<number | null>(null);
   const [userCngnBalance, setUserCngnBalance] = useState<number | null>(null);
+  const [userSolBalance, setUserSolBalance] = useState<number | null>(null);
   const [tradeModalOpen, setTradeModalOpen] = useState(false);
   const [tradeDirection, setTradeDirection] = useState<"buy" | "sell">("buy");
 
@@ -120,13 +121,12 @@ const InvestPrivateMarketDetails = () => {
       const overview = await fetchRwaMarketOverview(connection, rwaConfig.mint);
       setRwaOverview(overview);
 
-      // If user has a connected wallet, fetch their DPRI, USDC, and payout (cNGN) balances
+      // If user has a connected wallet, fetch their DPRI, USDC, cNGN, and SOL balances
       if (solWallet) {
         let walletAddress: string | undefined = solWallet.address;
         if (!walletAddress && typeof solWallet.getAddress === "function") {
           walletAddress = await solWallet.getAddress();
         }
-
         if (walletAddress) {
           const userHolding = await fetchUserRwaHolding(
             connection,
@@ -171,6 +171,14 @@ const InvestPrivateMarketDetails = () => {
             setUserCngnBalance(totalPayout);
           } catch (err) {
             console.error("Failed to query payout balance:", err);
+          }
+
+          // 3. Fetch SOL balance for transaction gas & rent
+          try {
+            const lamports = await connection.getBalance(ownerPk);
+            setUserSolBalance(lamports / 1e9);
+          } catch (err) {
+            console.error("Failed to query SOL balance:", err);
           }
         }
       }
@@ -349,7 +357,7 @@ const InvestPrivateMarketDetails = () => {
               className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors"
             >
               <ArrowLeft className="w-4 h-4" />
-              <span>Back to Private Market</span>
+              <span>Back to African stocks</span>
             </button>
             <Button
               variant="outline"
@@ -411,7 +419,7 @@ const InvestPrivateMarketDetails = () => {
                 <p className="text-lg font-bold text-foreground">
                   {rwaConfig.minBuyCostPayout
                     ? `₦${rwaConfig.minBuyCostPayout.toLocaleString()}`
-                    : "—"}
+                    : "None"}
                   <span className="text-xs font-normal text-muted-foreground block">
                     {rwaConfig.minBuyShares ? `(${rwaConfig.minBuyShares} ${rwaConfig.symbol})` : ""}
                   </span>
@@ -431,11 +439,25 @@ const InvestPrivateMarketDetails = () => {
               <div className="bg-secondary/40 border border-border/60 rounded-xl p-3.5 space-y-1">
                 <span className="text-xs text-muted-foreground">Status</span>
                 <div className="flex items-center gap-1.5 pt-0.5">
-                  <span className={`w-2 h-2 rounded-full ${isActive ? "bg-emerald-500" : "bg-destructive"}`} />
-                  <span className="text-sm font-semibold">{isActive ? "Active" : "Paused"}</span>
+                  <span className={`w-2 h-2 rounded-full ${isActive ? "bg-emerald-500" : "bg-amber-500"}`} />
+                  <span className="text-sm font-semibold">{isActive ? "Active" : "Pending Activation"}</span>
                 </div>
               </div>
             </div>
+
+            {/* Inactive Notice Banner */}
+            {!isActive && (
+              <div className="rounded-xl bg-amber-500/10 border border-amber-500/25 p-4 flex items-start gap-3 text-xs text-amber-600 dark:text-amber-400">
+                <Info className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                <div>
+                  <span className="font-semibold text-sm block">Trading Pending Activation on Solana</span>
+                  <span>
+                    The {rwaConfig.symbol} token vault is verified on Solana Mainnet ({vaultBal} units vaulted).
+                    The issuer ({rwaConfig.issuer}) will open active trading shortly. You can preview all term sheet details, quotes, and swap routes below.
+                  </span>
+                </div>
+              </div>
+            )}
 
             {/* User Holdings Card */}
             <div className="rounded-2xl bg-gradient-to-br from-primary/10 via-secondary/30 to-secondary/10 border border-primary/20 p-5 space-y-4">
@@ -451,6 +473,11 @@ const InvestPrivateMarketDetails = () => {
                     : userUsdcBalance !== null
                     ? `${userUsdcBalance.toFixed(2)} ${rwaConfig.payoutSymbol}`
                     : "—"}
+                  {userSolBalance !== null && (
+                    <span className="text-muted-foreground ml-1.5" title="Solana balance">
+                      · {userSolBalance.toFixed(3)} SOL
+                    </span>
+                  )}
                 </span>
               </div>
 
@@ -490,245 +517,454 @@ const InvestPrivateMarketDetails = () => {
               </div>
             </div>
 
-            {/* Early Access Overview Banner */}
-            <div className="rounded-2xl bg-gradient-to-r from-primary/15 via-primary/5 to-secondary/30 border border-primary/20 p-5 sm:p-6 space-y-3">
-              <div className="flex items-center gap-2">
-                <Badge variant="secondary" className="gap-1 bg-primary/20 text-primary border-primary/30 text-xs">
-                  <Sparkles className="w-3.5 h-3.5" />
-                  <span>Early Access Allocation</span>
-                </Badge>
-              </div>
-              <h2 className="text-lg sm:text-xl font-bold text-foreground">
-                Early Access: Dangote Petroleum Refinery &amp; Petrochemicals IPO
-              </h2>
-              <p className="text-sm text-muted-foreground leading-relaxed">
-                We are excited to present early access to the Dangote Petroleum Refinery and Petrochemicals IPO, now available for indication of interest on Corre.
-              </p>
-              <p className="text-sm text-muted-foreground leading-relaxed">
-                This is your opportunity to participate in what is widely expected to be the largest initial public offering in African capital market history. Through Corre, you can gain exposure to Dangote Refinery shares via a synthetic equity structure that holds the underlying stock in a dedicated Special Purpose Vehicle (SPV), with custody managed by Anchoria.
-              </p>
-            </div>
+            {rwaConfig.id === "ntbs5" ? (
+              <>
+                {/* NTBS5 Overview Banner */}
+                <div className="rounded-2xl bg-gradient-to-r from-emerald-500/15 via-primary/5 to-secondary/30 border border-emerald-500/20 p-5 sm:p-6 space-y-3">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <Badge variant="secondary" className="gap-1 bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border-emerald-500/30 text-xs">
+                      <Sparkles className="w-3.5 h-3.5" />
+                      <span>Sovereign Fixed Income</span>
+                    </Badge>
+                    <Badge variant="outline" className="text-xs">
+                      16.50% p.a. Yield
+                    </Badge>
+                    <Badge variant="outline" className="text-xs">
+                      365 Days Tenor
+                    </Badge>
+                  </div>
+                  <h2 className="text-lg sm:text-xl font-bold text-foreground">
+                    Nigerian Treasury Bill Series 5 (NTBS5)
+                  </h2>
+                  <p className="text-sm text-muted-foreground leading-relaxed">
+                    Tokenized sovereign debt instrument backed by the Federal Government of Nigeria and issued through Comercio Partners Asset Management.
+                  </p>
+                  <p className="text-sm text-muted-foreground leading-relaxed">
+                    NTBS5 delivers a fixed annualized yield of 16.50% over a 365-day tenor with automated digital settlement directly in cNGN on Solana. Investors can purchase seamlessly using either USDC (via automated Jupiter/Orca swap) or cNGN.
+                  </p>
+                </div>
 
-            {/* Section: What is a Synthetic Equity Position? */}
-            <div className="rounded-2xl bg-secondary/20 border border-border/60 p-5 sm:p-6 space-y-4">
-              <div className="flex items-center gap-2">
-                <Layers className="w-5 h-5 text-primary" />
-                <h3 className="text-base font-semibold text-foreground">What is a Synthetic Equity Position?</h3>
-              </div>
+                {/* Section: What is NTBS5? */}
+                <div className="rounded-2xl bg-secondary/20 border border-border/60 p-5 sm:p-6 space-y-4">
+                  <div className="flex items-center gap-2">
+                    <Layers className="w-5 h-5 text-primary" />
+                    <h3 className="text-base font-semibold text-foreground">What is Nigerian Treasury Bill Series 5?</h3>
+                  </div>
 
-              <div className="space-y-3 text-sm text-muted-foreground leading-relaxed">
-                <p>
-                  Unlike a commercial paper or bond, this is an equity instrument. There is no fixed interest rate and no maturity date. Your return comes from two sources: any appreciation in the share price over time, and dividends declared by the company (Dangote has proposed paying dividends in US Dollars, backed by the refinery&apos;s export earnings).
-                </p>
-                <p>
-                  Because the Dangote Refinery IPO is listed on the Nigerian Exchange (NGX) and subscriptions run through CSCS accounts and licensed brokers, Corre gives you access through a structured holding rather than a direct allocation. Here is how it works:
-                </p>
+                  <div className="space-y-3 text-sm text-muted-foreground leading-relaxed">
+                    <p>
+                      Treasury Bills (T-Bills) are short-term government sovereign debt instruments issued under the Central Bank of Nigeria (CBN) monetary framework. They are backed by the full faith and credit of the Federal Government of Nigeria, carrying virtually zero credit default risk within the domestic monetary system.
+                    </p>
+                    <p>
+                      Through GetEquity&apos;s regulated Solana Token-2022 smart contract vault, Comercio Partners brings institutional-grade sovereign yields on-chain, eliminating traditional banking barriers, manual paperwork, and high minimum deposit thresholds.
+                    </p>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-1">
-                  <div className="rounded-xl bg-secondary/40 border border-border/50 p-4 space-y-2">
-                    <div className="flex items-center gap-2 text-foreground font-semibold text-xs uppercase tracking-wide">
-                      <Lock className="w-4 h-4 text-primary" />
-                      <span>Ring-Fenced SPV Structure</span>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-1">
+                      <div className="rounded-xl bg-secondary/40 border border-border/50 p-4 space-y-2">
+                        <div className="flex items-center gap-2 text-foreground font-semibold text-xs uppercase tracking-wide">
+                          <Shield className="w-4 h-4 text-emerald-500" />
+                          <span>Sovereign Credit Backing</span>
+                        </div>
+                        <p className="text-xs text-muted-foreground leading-relaxed">
+                          Underlying assets are backed by Federal Government of Nigeria debt securities managed by Comercio Partners Asset Management, a licensed SEC-regulated fund manager.
+                        </p>
+                      </div>
+
+                      <div className="rounded-xl bg-secondary/40 border border-border/50 p-4 space-y-2">
+                        <div className="flex items-center gap-2 text-foreground font-semibold text-xs uppercase tracking-wide">
+                          <Lock className="w-4 h-4 text-primary" />
+                          <span>On-Chain Vault Custody</span>
+                        </div>
+                        <p className="text-xs text-muted-foreground leading-relaxed">
+                          Token units are issued and held in a deterministic Token-2022 vault contract on Solana. Each token represents 1 full unit of NTBS5 valued at ₦10,000.00 cNGN.
+                        </p>
+                      </div>
                     </div>
-                    <p className="text-xs text-muted-foreground leading-relaxed">
-                      GetEquity (through its issuing partner) subscribes to and holds the underlying Dangote Refinery shares in a ring-fenced Special Purpose Vehicle (SPV). The SPV exists solely to hold these shares on behalf of investors. When you invest, you receive a digital representation of your proportional economic interest in the shares held by that SPV. You do not hold the shares directly in your own CSCS account; instead, your beneficial ownership is recorded and held in trust.
+
+                    <div className="rounded-xl bg-primary/10 border border-primary/20 p-3.5 flex items-start gap-2.5 text-xs text-foreground/90">
+                      <Info className="w-4 h-4 text-primary flex-shrink-0 mt-0.5" />
+                      <p>
+                        <span className="font-semibold text-foreground">Summary:</span> NTBS5 combines the sovereign security of Nigerian Treasury Bills with the instant settlement and liquidity of Solana DeFi, offering a predictable 16.50% annualized yield.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Section: Key Terms of the Offer */}
+                <div className="rounded-2xl bg-secondary/20 border border-border/60 p-5 sm:p-6 space-y-4">
+                  <div className="flex items-center justify-between flex-wrap gap-2">
+                    <div className="flex items-center gap-2">
+                      <FileText className="w-5 h-5 text-primary" />
+                      <h3 className="text-base font-semibold text-foreground">Key Terms of the Offer</h3>
+                    </div>
+                    <Badge variant="outline" className="text-xs">
+                      Term Sheet
+                    </Badge>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                    <div className="rounded-xl bg-secondary/30 border border-border/50 p-3 space-y-1">
+                      <span className="text-muted-foreground">Issuer / Fund Manager</span>
+                      <p className="font-semibold text-foreground">Comercio Partners Asset Management</p>
+                    </div>
+
+                    <div className="rounded-xl bg-secondary/30 border border-border/50 p-3 space-y-1">
+                      <span className="text-muted-foreground">Instrument</span>
+                      <p className="font-semibold text-foreground">Nigerian Treasury Bill Series 5 (NTBS5)</p>
+                    </div>
+
+                    <div className="rounded-xl bg-secondary/30 border border-border/50 p-3 space-y-1">
+                      <span className="text-muted-foreground">Asset Class</span>
+                      <p className="font-semibold text-foreground">Sovereign Fixed Income / Money Market Fund</p>
+                    </div>
+
+                    <div className="rounded-xl bg-secondary/30 border border-border/50 p-3 space-y-1">
+                      <span className="text-muted-foreground">Indicative Yield</span>
+                      <p className="font-semibold text-emerald-600 dark:text-emerald-400">16.50% p.a. (Annualized)</p>
+                    </div>
+
+                    <div className="rounded-xl bg-secondary/30 border border-border/50 p-3 space-y-1">
+                      <span className="text-muted-foreground">Tenor / Duration</span>
+                      <p className="font-semibold text-foreground">365 Days</p>
+                    </div>
+
+                    <div className="rounded-xl bg-secondary/30 border border-border/50 p-3 space-y-1">
+                      <span className="text-muted-foreground">Per-Unit Price</span>
+                      <p className="font-semibold text-primary">₦10,000.00 cNGN (~$7.30 USDC)</p>
+                    </div>
+
+                    <div className="rounded-xl bg-secondary/30 border border-border/50 p-3 space-y-1">
+                      <span className="text-muted-foreground">Minimum Order</span>
+                      <p className="font-semibold text-foreground">1 Unit (₦10,000.00 cNGN)</p>
+                    </div>
+
+                    <div className="rounded-xl bg-secondary/30 border border-border/50 p-3 space-y-1">
+                      <span className="text-muted-foreground">Settlement Currency</span>
+                      <p className="font-semibold text-foreground">cNGN (Solana Token-2022) or USDC Auto-Swap</p>
+                    </div>
+
+                    <div className="rounded-xl bg-secondary/30 border border-border/50 p-3 space-y-1">
+                      <span className="text-muted-foreground">Trading Fee</span>
+                      <p className="font-semibold text-foreground">{feePct}% Protocol Fee</p>
+                    </div>
+
+                    <div className="rounded-xl bg-secondary/30 border border-border/50 p-3 space-y-1">
+                      <span className="text-muted-foreground">Regulatory Oversight</span>
+                      <p className="font-semibold text-foreground">SEC Nigeria Registered Asset Manager</p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Section: About Comercio Partners */}
+                <div className="rounded-2xl bg-secondary/20 border border-border/60 p-5 sm:p-6 space-y-3">
+                  <div className="flex items-center gap-2">
+                    <Building2 className="w-5 h-5 text-primary" />
+                    <h3 className="text-base font-semibold text-foreground">About Comercio Partners</h3>
+                  </div>
+
+                  <div className="space-y-3 text-sm text-muted-foreground leading-relaxed">
+                    <p>
+                      Comercio Partners is a premier African investment banking firm operating across fixed income securities, structured asset management, and private equity advisory.
+                    </p>
+                    <p>
+                      Through its SEC-registered asset management arm, Comercio Partners manages diversified institutional portfolios, treasury portfolios, and high-yield fixed income funds, bringing institutional-grade African sovereign securities to blockchain rails.
                     </p>
                   </div>
+                </div>
 
-                  <div className="rounded-xl bg-secondary/40 border border-border/50 p-4 space-y-2">
-                    <div className="flex items-center gap-2 text-foreground font-semibold text-xs uppercase tracking-wide">
-                      <Shield className="w-4 h-4 text-emerald-500" />
-                      <span>Regulated Custody by Anchoria</span>
+                {/* Section: Why Consider NTBS5 */}
+                <div className="rounded-2xl bg-secondary/20 border border-border/60 p-5 sm:p-6 space-y-4">
+                  <div className="flex items-center gap-2">
+                    <CheckCircle2 className="w-5 h-5 text-primary" />
+                    <h3 className="text-base font-semibold text-foreground">Why Consider This Offer</h3>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div className="rounded-xl bg-secondary/40 border border-border/50 p-4 space-y-1.5">
+                      <div className="flex items-center gap-2">
+                        <TrendingUp className="w-4 h-4 text-emerald-500" />
+                        <h4 className="font-semibold text-xs text-foreground uppercase tracking-wide">16.50% Fixed Yield</h4>
+                      </div>
+                      <p className="text-xs text-muted-foreground leading-relaxed">
+                        Earn an attractive annualized return that strongly outpaces standard dollar money market rates and local bank deposits.
+                      </p>
                     </div>
-                    <p className="text-xs text-muted-foreground leading-relaxed">
-                      The actual shares are held in custody by Anchoria, a licensed and SEC-regulated custodian. The custodian&apos;s role is to safekeep the underlying assets, independent of Corre, so that the shares backing your position are held by a regulated third party rather than by the platform itself. This separation protects investors: your economic interest is tied to real, custodied shares.
+
+                    <div className="rounded-xl bg-secondary/40 border border-border/50 p-4 space-y-1.5">
+                      <div className="flex items-center gap-2">
+                        <Shield className="w-4 h-4 text-primary" />
+                        <h4 className="font-semibold text-xs text-foreground uppercase tracking-wide">Sovereign Security</h4>
+                      </div>
+                      <p className="text-xs text-muted-foreground leading-relaxed">
+                        Backed by Nigerian sovereign treasury obligations, representing the highest credit quality in the Nigerian capital market.
+                      </p>
+                    </div>
+
+                    <div className="rounded-xl bg-secondary/40 border border-border/50 p-4 space-y-1.5">
+                      <div className="flex items-center gap-2">
+                        <Coins className="w-4 h-4 text-blue-500" />
+                        <h4 className="font-semibold text-xs text-foreground uppercase tracking-wide">USDC &amp; cNGN Settlement</h4>
+                      </div>
+                      <p className="text-xs text-muted-foreground leading-relaxed">
+                        Participate directly using USDC or cNGN with automatic conversion via Jupiter and Orca, with full gas sponsorship.
+                      </p>
+                    </div>
+
+                    <div className="rounded-xl bg-secondary/40 border border-border/50 p-4 space-y-1.5">
+                      <div className="flex items-center gap-2">
+                        <Globe className="w-4 h-4 text-amber-500" />
+                        <h4 className="font-semibold text-xs text-foreground uppercase tracking-wide">Zero Paperwork</h4>
+                      </div>
+                      <p className="text-xs text-muted-foreground leading-relaxed">
+                        Instant digital settlement directly in your Solana self-custodial wallet without bank queues or paper forms.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </>
+            ) : (
+              <>
+                {/* Early Access Overview Banner */}
+                <div className="rounded-2xl bg-gradient-to-r from-primary/15 via-primary/5 to-secondary/30 border border-primary/20 p-5 sm:p-6 space-y-3">
+                  <div className="flex items-center gap-2">
+                    <Badge variant="secondary" className="gap-1 bg-primary/20 text-primary border-primary/30 text-xs">
+                      <Sparkles className="w-3.5 h-3.5" />
+                      <span>Early Access Allocation</span>
+                    </Badge>
+                  </div>
+                  <h2 className="text-lg sm:text-xl font-bold text-foreground">
+                    Early Access: Dangote Petroleum Refinery &amp; Petrochemicals IPO
+                  </h2>
+                  <p className="text-sm text-muted-foreground leading-relaxed">
+                    We are excited to present early access to the Dangote Petroleum Refinery and Petrochemicals IPO, now available for indication of interest on Corre.
+                  </p>
+                  <p className="text-sm text-muted-foreground leading-relaxed">
+                    This is your opportunity to participate in what is widely expected to be the largest initial public offering in African capital market history. Through Corre, you can gain exposure to Dangote Refinery shares via a synthetic equity structure that holds the underlying stock in a dedicated Special Purpose Vehicle (SPV), with custody managed by Anchoria.
+                  </p>
+                </div>
+
+                {/* Section: What is a Synthetic Equity Position? */}
+                <div className="rounded-2xl bg-secondary/20 border border-border/60 p-5 sm:p-6 space-y-4">
+                  <div className="flex items-center gap-2">
+                    <Layers className="w-5 h-5 text-primary" />
+                    <h3 className="text-base font-semibold text-foreground">What is a Synthetic Equity Position?</h3>
+                  </div>
+
+                  <div className="space-y-3 text-sm text-muted-foreground leading-relaxed">
+                    <p>
+                      Unlike a commercial paper or bond, this is an equity instrument. There is no fixed interest rate and no maturity date. Your return comes from two sources: any appreciation in the share price over time, and dividends declared by the company (Dangote has proposed paying dividends in US Dollars, backed by the refinery&apos;s export earnings).
+                    </p>
+                    <p>
+                      Because the Dangote Refinery IPO is listed on the Nigerian Exchange (NGX) and subscriptions run through CSCS accounts and licensed brokers, Corre gives you access through a structured holding rather than a direct allocation. Here is how it works:
+                    </p>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-1">
+                      <div className="rounded-xl bg-secondary/40 border border-border/50 p-4 space-y-2">
+                        <div className="flex items-center gap-2 text-foreground font-semibold text-xs uppercase tracking-wide">
+                          <Lock className="w-4 h-4 text-primary" />
+                          <span>Ring-Fenced SPV Structure</span>
+                        </div>
+                        <p className="text-xs text-muted-foreground leading-relaxed">
+                          GetEquity (through its issuing partner) subscribes to and holds the underlying Dangote Refinery shares in a ring-fenced Special Purpose Vehicle (SPV). The SPV exists solely to hold these shares on behalf of investors. When you invest, you receive a digital representation of your proportional economic interest in the shares held by that SPV. You do not hold the shares directly in your own CSCS account; instead, your beneficial ownership is recorded and held in trust.
+                        </p>
+                      </div>
+
+                      <div className="rounded-xl bg-secondary/40 border border-border/50 p-4 space-y-2">
+                        <div className="flex items-center gap-2 text-foreground font-semibold text-xs uppercase tracking-wide">
+                          <Shield className="w-4 h-4 text-emerald-500" />
+                          <span>Regulated Custody by Anchoria</span>
+                        </div>
+                        <p className="text-xs text-muted-foreground leading-relaxed">
+                          The actual shares are held in custody by Anchoria, a licensed and SEC-regulated custodian. The custodian&apos;s role is to safekeep the underlying assets, independent of Corre, so that the shares backing your position are held by a regulated third party rather than by the platform itself. This separation protects investors: your economic interest is tied to real, custodied shares.
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="rounded-xl bg-primary/10 border border-primary/20 p-3.5 flex items-start gap-2.5 text-xs text-foreground/90">
+                      <Info className="w-4 h-4 text-primary flex-shrink-0 mt-0.5" />
+                      <p>
+                        <span className="font-semibold text-foreground">In short:</span> You get the upside of holding Dangote Refinery equity (price appreciation plus dividends) through a fractional, accessible structure, while the underlying shares sit safely with a regulated custodian inside a dedicated SPV.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Section: Key Terms of the Offer */}
+                <div className="rounded-2xl bg-secondary/20 border border-border/60 p-5 sm:p-6 space-y-4">
+                  <div className="flex items-center justify-between flex-wrap gap-2">
+                    <div className="flex items-center gap-2">
+                      <FileText className="w-5 h-5 text-primary" />
+                      <h3 className="text-base font-semibold text-foreground">Key Terms of the Offer</h3>
+                    </div>
+                    <Badge variant="outline" className="text-xs">
+                      Indicative Term Sheet
+                    </Badge>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                    <div className="rounded-xl bg-secondary/30 border border-border/50 p-3 space-y-1">
+                      <span className="text-muted-foreground">Issuer of Underlying Shares</span>
+                      <p className="font-semibold text-foreground">Dangote Petroleum Refinery and Petrochemicals FZE</p>
+                    </div>
+
+                    <div className="rounded-xl bg-secondary/30 border border-border/50 p-3 space-y-1">
+                      <span className="text-muted-foreground">Instrument</span>
+                      <p className="font-semibold text-foreground">Synthetic Equity (Digital representation of shares in SPV)</p>
+                    </div>
+
+                    <div className="rounded-xl bg-secondary/30 border border-border/50 p-3 space-y-1">
+                      <span className="text-muted-foreground">Structure</span>
+                      <p className="font-semibold text-foreground">Shares held in a dedicated Special Purpose Vehicle (SPV)</p>
+                    </div>
+
+                    <div className="rounded-xl bg-secondary/30 border border-border/50 p-3 space-y-1">
+                      <span className="text-muted-foreground">Custodian</span>
+                      <p className="font-semibold text-foreground">Anchoria (Licensed &amp; SEC-Regulated Custodian)</p>
+                    </div>
+
+                    <div className="rounded-xl bg-secondary/30 border border-border/50 p-3 space-y-1">
+                      <span className="text-muted-foreground">Listing Venue</span>
+                      <p className="font-semibold text-foreground">Nigerian Exchange (NGX) &bull; Potential dual listing under review</p>
+                    </div>
+
+                    <div className="rounded-xl bg-secondary/30 border border-border/50 p-3 space-y-1">
+                      <span className="text-muted-foreground">Per-Share Indicative Price</span>
+                      <p className="font-semibold text-primary">$0.35 &asymp; &#8358;525</p>
+                    </div>
+
+                    <div className="rounded-xl bg-secondary/30 border border-border/50 p-3 space-y-1">
+                      <span className="text-muted-foreground">Estimated Valuation</span>
+                      <p className="font-semibold text-foreground">$40B – $50B (Valuation: $39.1B &asymp; &#8358;59.8 Trillion)</p>
+                    </div>
+
+                    <div className="rounded-xl bg-secondary/30 border border-border/50 p-3 space-y-1">
+                      <span className="text-muted-foreground">Offer Size</span>
+                      <p className="font-semibold text-foreground">Approximately 10% of company equity (~$5B raise)</p>
+                    </div>
+
+                    <div className="rounded-xl bg-secondary/30 border border-border/50 p-3 space-y-1">
+                      <span className="text-muted-foreground">Interest Rate &amp; Maturity</span>
+                      <p className="font-semibold text-foreground">None (Open-ended equity; returns via price appreciation and dividends)</p>
+                    </div>
+
+                    <div className="rounded-xl bg-secondary/30 border border-border/50 p-3 space-y-1">
+                      <span className="text-muted-foreground">Dividends</span>
+                      <p className="font-semibold text-foreground">Proposed in US Dollars, subject to company declaration</p>
+                    </div>
+
+                    <div className="rounded-xl bg-secondary/30 border border-border/50 p-3 space-y-1">
+                      <span className="text-muted-foreground">Expected IPO Subscription Window</span>
+                      <p className="font-semibold text-foreground">Targeted H2 2026 (September 2026 targeted; confirmed in SEC prospectus)</p>
+                    </div>
+
+                    <div className="rounded-xl bg-secondary/30 border border-border/50 p-3 space-y-1">
+                      <span className="text-muted-foreground">Regulatory Status</span>
+                      <p className="font-semibold text-foreground">IPO subject to SEC Nigeria prospectus approval</p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Section: About Dangote Petroleum Refinery */}
+                <div className="rounded-2xl bg-secondary/20 border border-border/60 p-5 sm:p-6 space-y-3">
+                  <div className="flex items-center gap-2">
+                    <Building2 className="w-5 h-5 text-primary" />
+                    <h3 className="text-base font-semibold text-foreground">About Dangote Petroleum Refinery</h3>
+                  </div>
+
+                  <div className="space-y-3 text-sm text-muted-foreground leading-relaxed">
+                    <p>
+                      The Dangote Petroleum Refinery and Petrochemicals FZE, located in the Lekki Free Trade Zone in Lagos, is the world&apos;s largest single-train crude oil refinery. Commissioned in May 2023 after nearly a decade of construction and an investment of approximately $20 billion, the facility moved into full commercial operations in early 2024.
+                    </p>
+                    <p>
+                      By February 2026, the refinery had reached its full processing capacity of 650,000 barrels of crude oil per day, refining crude into petrol, diesel, and aviation fuel. In an official test run, the plant exceeded its rated capacity, running at roughly 700,000 barrels per day for the first time.
+                    </p>
+                    <p>
+                      The refinery is not a speculative venture. It is already operating at scale, generating foreign currency income, supplying the domestic Nigerian market, and exporting refined products to Ghana, Cameroon, Togo, Tanzania, and international markets including Europe. Jet fuel exports alone grew significantly between 2024 and 2026.
+                    </p>
+                    <p>
+                      The business benefits from structural advantages unavailable to competitors, including the <span className="text-foreground font-medium">Naira-for-Crude programme</span>, under which NNPC supplies domestic crude in naira rather than dollars, reducing the refinery&apos;s foreign exchange exposure.
                     </p>
                   </div>
                 </div>
 
-                <div className="rounded-xl bg-primary/10 border border-primary/20 p-3.5 flex items-start gap-2.5 text-xs text-foreground/90">
-                  <Info className="w-4 h-4 text-primary flex-shrink-0 mt-0.5" />
-                  <p>
-                    <span className="font-semibold text-foreground">In short:</span> You get the upside of holding Dangote Refinery equity (price appreciation plus dividends) through a fractional, accessible structure, while the underlying shares sit safely with a regulated custodian inside a dedicated SPV.
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            {/* Section: Key Terms of the Offer */}
-            <div className="rounded-2xl bg-secondary/20 border border-border/60 p-5 sm:p-6 space-y-4">
-              <div className="flex items-center justify-between flex-wrap gap-2">
-                <div className="flex items-center gap-2">
-                  <FileText className="w-5 h-5 text-primary" />
-                  <h3 className="text-base font-semibold text-foreground">Key Terms of the Offer</h3>
-                </div>
-                <Badge variant="outline" className="text-xs">
-                  Indicative Term Sheet
-                </Badge>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
-                <div className="rounded-xl bg-secondary/30 border border-border/50 p-3 space-y-1">
-                  <span className="text-muted-foreground">Issuer of Underlying Shares</span>
-                  <p className="font-semibold text-foreground">Dangote Petroleum Refinery and Petrochemicals FZE</p>
-                </div>
-
-                <div className="rounded-xl bg-secondary/30 border border-border/50 p-3 space-y-1">
-                  <span className="text-muted-foreground">Instrument</span>
-                  <p className="font-semibold text-foreground">Synthetic Equity (Digital representation of shares in SPV)</p>
-                </div>
-
-                <div className="rounded-xl bg-secondary/30 border border-border/50 p-3 space-y-1">
-                  <span className="text-muted-foreground">Structure</span>
-                  <p className="font-semibold text-foreground">Shares held in a dedicated Special Purpose Vehicle (SPV)</p>
-                </div>
-
-                <div className="rounded-xl bg-secondary/30 border border-border/50 p-3 space-y-1">
-                  <span className="text-muted-foreground">Custodian</span>
-                  <p className="font-semibold text-foreground">Anchoria (Licensed &amp; SEC-Regulated Custodian)</p>
-                </div>
-
-                <div className="rounded-xl bg-secondary/30 border border-border/50 p-3 space-y-1">
-                  <span className="text-muted-foreground">Listing Venue</span>
-                  <p className="font-semibold text-foreground">Nigerian Exchange (NGX) &bull; Potential dual listing under review</p>
-                </div>
-
-                <div className="rounded-xl bg-secondary/30 border border-border/50 p-3 space-y-1">
-                  <span className="text-muted-foreground">Per-Share Indicative Price</span>
-                  <p className="font-semibold text-primary">$0.35 &asymp; &#8358;525</p>
-                </div>
-
-                <div className="rounded-xl bg-secondary/30 border border-border/50 p-3 space-y-1">
-                  <span className="text-muted-foreground">Estimated Valuation</span>
-                  <p className="font-semibold text-foreground">$40B – $50B (Valuation: $39.1B &asymp; &#8358;59.8 Trillion)</p>
-                </div>
-
-                <div className="rounded-xl bg-secondary/30 border border-border/50 p-3 space-y-1">
-                  <span className="text-muted-foreground">Offer Size</span>
-                  <p className="font-semibold text-foreground">Approximately 10% of company equity (~$5B raise)</p>
-                </div>
-
-                <div className="rounded-xl bg-secondary/30 border border-border/50 p-3 space-y-1">
-                  <span className="text-muted-foreground">Interest Rate &amp; Maturity</span>
-                  <p className="font-semibold text-foreground">None (Open-ended equity; returns via price appreciation and dividends)</p>
-                </div>
-
-                <div className="rounded-xl bg-secondary/30 border border-border/50 p-3 space-y-1">
-                  <span className="text-muted-foreground">Dividends</span>
-                  <p className="font-semibold text-foreground">Proposed in US Dollars, subject to company declaration</p>
-                </div>
-
-                <div className="rounded-xl bg-secondary/30 border border-border/50 p-3 space-y-1">
-                  <span className="text-muted-foreground">Expected IPO Subscription Window</span>
-                  <p className="font-semibold text-foreground">Targeted H2 2026 (September 2026 targeted; confirmed in SEC prospectus)</p>
-                </div>
-
-                <div className="rounded-xl bg-secondary/30 border border-border/50 p-3 space-y-1">
-                  <span className="text-muted-foreground">Regulatory Status</span>
-                  <p className="font-semibold text-foreground">IPO subject to SEC Nigeria prospectus approval</p>
-                </div>
-              </div>
-            </div>
-
-            {/* Section: About Dangote Petroleum Refinery */}
-            <div className="rounded-2xl bg-secondary/20 border border-border/60 p-5 sm:p-6 space-y-3">
-              <div className="flex items-center gap-2">
-                <Building2 className="w-5 h-5 text-primary" />
-                <h3 className="text-base font-semibold text-foreground">About Dangote Petroleum Refinery</h3>
-              </div>
-
-              <div className="space-y-3 text-sm text-muted-foreground leading-relaxed">
-                <p>
-                  The Dangote Petroleum Refinery and Petrochemicals FZE, located in the Lekki Free Trade Zone in Lagos, is the world&apos;s largest single-train crude oil refinery. Commissioned in May 2023 after nearly a decade of construction and an investment of approximately $20 billion, the facility moved into full commercial operations in early 2024.
-                </p>
-                <p>
-                  By February 2026, the refinery had reached its full processing capacity of 650,000 barrels of crude oil per day, refining crude into petrol, diesel, and aviation fuel. In an official test run, the plant exceeded its rated capacity, running at roughly 700,000 barrels per day for the first time.
-                </p>
-                <p>
-                  The refinery is not a speculative venture. It is already operating at scale, generating foreign currency income, supplying the domestic Nigerian market, and exporting refined products to Ghana, Cameroon, Togo, Tanzania, and international markets including Europe. Jet fuel exports alone grew significantly between 2024 and 2026.
-                </p>
-                <p>
-                  The business benefits from structural advantages unavailable to competitors, including the <span className="text-foreground font-medium">Naira-for-Crude programme</span>, under which NNPC supplies domestic crude in naira rather than dollars, reducing the refinery&apos;s foreign exchange exposure.
-                </p>
-              </div>
-            </div>
-
-            {/* Section: The Investment Case */}
-            <div className="rounded-2xl bg-secondary/20 border border-border/60 p-5 sm:p-6 space-y-3">
-              <div className="flex items-center gap-2">
-                <TrendingUp className="w-5 h-5 text-primary" />
-                <h3 className="text-base font-semibold text-foreground">The Investment Case</h3>
-              </div>
-
-              <div className="space-y-3 text-sm text-muted-foreground leading-relaxed">
-                <p>
-                  The IPO involves the listing of approximately 10% of the refinery&apos;s equity, with the company targeting a valuation of between $40 billion and $50 billion and a raise of up to roughly $5 billion. For context, this is several times larger than the previous record Nigerian listing, MTN Nigeria in 2019, which raised approximately $876 million. Analysts have drawn comparisons to the Saudi Aramco listing of 2019, a national-scale energy asset opening to public ownership for the first time.
-                </p>
-                <p>
-                  Proceeds from the IPO are earmarked for an expansion phase, with the Dangote Group planning to invest up to $40 billion over five years to more than double refining capacity from 650,000 bpd toward 1.5 million bpd.
-                </p>
-              </div>
-            </div>
-
-            {/* Section: Why Consider This Offer */}
-            <div className="rounded-2xl bg-secondary/20 border border-border/60 p-5 sm:p-6 space-y-4">
-              <div className="flex items-center gap-2">
-                <CheckCircle2 className="w-5 h-5 text-primary" />
-                <h3 className="text-base font-semibold text-foreground">Why Consider This Offer</h3>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div className="rounded-xl bg-secondary/40 border border-border/50 p-4 space-y-1.5">
+                {/* Section: The Investment Case */}
+                <div className="rounded-2xl bg-secondary/20 border border-border/60 p-5 sm:p-6 space-y-3">
                   <div className="flex items-center gap-2">
-                    <Flame className="w-4 h-4 text-amber-500" />
-                    <h4 className="font-semibold text-xs text-foreground uppercase tracking-wide">Generational Asset</h4>
+                    <TrendingUp className="w-5 h-5 text-primary" />
+                    <h3 className="text-base font-semibold text-foreground">The Investment Case</h3>
                   </div>
-                  <p className="text-xs text-muted-foreground leading-relaxed">
-                    Direct economic exposure to the largest single-train refinery in the world, already operating at full capacity.
-                  </p>
+
+                  <div className="space-y-3 text-sm text-muted-foreground leading-relaxed">
+                    <p>
+                      The IPO involves the listing of approximately 10% of the refinery&apos;s equity, with the company targeting a valuation of between $40 billion and $50 billion and a raise of up to roughly $5 billion. For context, this is several times larger than the previous record Nigerian listing, MTN Nigeria in 2019, which raised approximately $876 million. Analysts have drawn comparisons to the Saudi Aramco listing of 2019, a national-scale energy asset opening to public ownership for the first time.
+                    </p>
+                    <p>
+                      Proceeds from the IPO are earmarked for an expansion phase, with the Dangote Group planning to invest up to $40 billion over five years to more than double refining capacity from 650,000 bpd toward 1.5 million bpd.
+                    </p>
+                  </div>
                 </div>
 
-                <div className="rounded-xl bg-secondary/40 border border-border/50 p-4 space-y-1.5">
+                {/* Section: Why Consider This Offer */}
+                <div className="rounded-2xl bg-secondary/20 border border-border/60 p-5 sm:p-6 space-y-4">
                   <div className="flex items-center gap-2">
-                    <Building2 className="w-4 h-4 text-primary" />
-                    <h4 className="font-semibold text-xs text-foreground uppercase tracking-wide">Real, Operating Business</h4>
+                    <CheckCircle2 className="w-5 h-5 text-primary" />
+                    <h3 className="text-base font-semibold text-foreground">Why Consider This Offer</h3>
                   </div>
-                  <p className="text-xs text-muted-foreground leading-relaxed">
-                    Unlike a typical IPO, the refinery is already generating revenue, foreign exchange earnings, and domestic supply, which changes the risk profile considerably.
-                  </p>
-                </div>
 
-                <div className="rounded-xl bg-secondary/40 border border-border/50 p-4 space-y-1.5">
-                  <div className="flex items-center gap-2">
-                    <Coins className="w-4 h-4 text-emerald-500" />
-                    <h4 className="font-semibold text-xs text-foreground uppercase tracking-wide">Dollar Dividend Potential</h4>
-                  </div>
-                  <p className="text-xs text-muted-foreground leading-relaxed">
-                    A proposed USD dividend structure backed by export earnings offers a potential hard-currency income stream.
-                  </p>
-                </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div className="rounded-xl bg-secondary/40 border border-border/50 p-4 space-y-1.5">
+                      <div className="flex items-center gap-2">
+                        <Flame className="w-4 h-4 text-amber-500" />
+                        <h4 className="font-semibold text-xs text-foreground uppercase tracking-wide">Generational Asset</h4>
+                      </div>
+                      <p className="text-xs text-muted-foreground leading-relaxed">
+                        Direct economic exposure to the largest single-train refinery in the world, already operating at full capacity.
+                      </p>
+                    </div>
 
-                <div className="rounded-xl bg-secondary/40 border border-border/50 p-4 space-y-1.5">
-                  <div className="flex items-center gap-2">
-                    <Globe className="w-4 h-4 text-blue-500" />
-                    <h4 className="font-semibold text-xs text-foreground uppercase tracking-wide">Accessible Structure</h4>
-                  </div>
-                  <p className="text-xs text-muted-foreground leading-relaxed">
-                    Corre&apos;s SPV model lets you gain fractional exposure without navigating direct CSCS subscription, while the underlying shares are safeguarded by a regulated custodian.
-                  </p>
-                </div>
+                    <div className="rounded-xl bg-secondary/40 border border-border/50 p-4 space-y-1.5">
+                      <div className="flex items-center gap-2">
+                        <Building2 className="w-4 h-4 text-primary" />
+                        <h4 className="font-semibold text-xs text-foreground uppercase tracking-wide">Real, Operating Business</h4>
+                      </div>
+                      <p className="text-xs text-muted-foreground leading-relaxed">
+                        Unlike a typical IPO, the refinery is already generating revenue, foreign exchange earnings, and domestic supply, which changes the risk profile considerably.
+                      </p>
+                    </div>
 
-                <div className="sm:col-span-2 rounded-xl bg-secondary/40 border border-border/50 p-4 space-y-1.5">
-                  <div className="flex items-center gap-2">
-                    <Shield className="w-4 h-4 text-purple-500" />
-                    <h4 className="font-semibold text-xs text-foreground uppercase tracking-wide">Structural Protection</h4>
+                    <div className="rounded-xl bg-secondary/40 border border-border/50 p-4 space-y-1.5">
+                      <div className="flex items-center gap-2">
+                        <Coins className="w-4 h-4 text-emerald-500" />
+                        <h4 className="font-semibold text-xs text-foreground uppercase tracking-wide">Dollar Dividend Potential</h4>
+                      </div>
+                      <p className="text-xs text-muted-foreground leading-relaxed">
+                        A proposed USD dividend structure backed by export earnings offers a potential hard-currency income stream.
+                      </p>
+                    </div>
+
+                    <div className="rounded-xl bg-secondary/40 border border-border/50 p-4 space-y-1.5">
+                      <div className="flex items-center gap-2">
+                        <Globe className="w-4 h-4 text-blue-500" />
+                        <h4 className="font-semibold text-xs text-foreground uppercase tracking-wide">Accessible Structure</h4>
+                      </div>
+                      <p className="text-xs text-muted-foreground leading-relaxed">
+                        Corre&apos;s SPV model lets you gain fractional exposure without navigating direct CSCS subscription, while the underlying shares are safeguarded by a regulated custodian.
+                      </p>
+                    </div>
+
+                    <div className="sm:col-span-2 rounded-xl bg-secondary/40 border border-border/50 p-4 space-y-1.5">
+                      <div className="flex items-center gap-2">
+                        <Shield className="w-4 h-4 text-purple-500" />
+                        <h4 className="font-semibold text-xs text-foreground uppercase tracking-wide">Structural Protection</h4>
+                      </div>
+                      <p className="text-xs text-muted-foreground leading-relaxed">
+                        Underlying shares are held by Anchoria, an SEC-regulated custodian, independent of the platform.
+                      </p>
+                    </div>
                   </div>
-                  <p className="text-xs text-muted-foreground leading-relaxed">
-                    Underlying shares are held by Anchoria, an SEC-regulated custodian, independent of the platform.
-                  </p>
                 </div>
-              </div>
-            </div>
+              </>
+            )}
 
             {/* On-Chain Verification Reference */}
             <div className="rounded-xl bg-secondary/30 border border-border/40 p-4 space-y-2 text-xs">
@@ -770,8 +1006,10 @@ const InvestPrivateMarketDetails = () => {
           userShares={userRwaShares}
           solanaWallet={solWallet}
           signTransaction={signTransaction}
+          privyUserId={user?.id}
           onTradeSuccess={loadRwaData}
           initialAmount={amount}
+          solBalance={userSolBalance}
         />
       </div>
     );
@@ -789,7 +1027,7 @@ const InvestPrivateMarketDetails = () => {
             className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors"
           >
             <ArrowLeft className="w-4 h-4" />
-            <span>Back to Private Market</span>
+            <span>Back to African stocks</span>
           </button>
         </div>
 

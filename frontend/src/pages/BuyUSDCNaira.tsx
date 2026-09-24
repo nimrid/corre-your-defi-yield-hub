@@ -136,7 +136,6 @@ const BuyUSDCNaira = () => {
                     chain: Chain.SOLANA,
                     webhookURL: webhookUrl("/webhook/paj-ramp"),
                     fee,
-                    businessUSDCFee: fee,
                 } as any,
                 token
             );
@@ -285,7 +284,7 @@ const BuyUSDCNaira = () => {
                                 </div>
                                 <div className="border-t border-border/40 pt-3 flex justify-between items-center text-xs">
                                     <span className="text-muted-foreground">Platform Fee</span>
-                                    <span className="font-medium">{(order.fee || 0.5)} USDC</span>
+                                    <span className="font-medium">{(order.fee ?? 0.5)} USDC</span>
                                 </div>
                             </div>
 

@@ -12,6 +12,7 @@
 import {
   Connection,
   PublicKey,
+  SystemProgram,
   Transaction,
   TransactionInstruction,
   TransactionMessage,
@@ -104,6 +105,9 @@ export const ASSET_ACCOUNT_DISCRIMINATOR = new Uint8Array([234, 180, 241, 252, 1
 
 // sha256("account:TokenMeta")[0..8]
 export const TOKEN_META_DISCRIMINATOR = new Uint8Array([130, 87, 174, 35, 21, 44, 92, 19]);
+
+// sha256("global:init_clock")[0..8] - [0xbb, 0x85, 0xbe, 0x2c, 0xb6, 0x99, 0xdb, 0xe5]
+export const INIT_CLOCK_DISCRIMINATOR = new Uint8Array([187, 133, 190, 44, 182, 153, 219, 229]);
 
 // ─── PDA Helpers ─────────────────────────────────────────────────────────────
 
@@ -693,6 +697,58 @@ export function calculateSellQuote(params: {
  * [4] vault_rwa_ata (writable)
  * [5] vault_payout_ata (writable)
  * [6] meta PDA
+/**
+ * Builds the raw TransactionInstruction to initialize a holder's clock PDA under rwa_accrual.
+ * Required by Token-2022 Transfer Hook before a new holder can receive transfer-hook-enabled tokens.
+ *
+ * Accounts:
+ * [0] payer (signer, writable)
+ * [1] mint (readable)
+ * [2] clock PDA ["clock", mint, owner] (writable)
+ * [3] SystemProgram (readable)
+ */
+export function createInitClockInstruction(params: {
+  payer: PublicKey;
+  mint: PublicKey;
+  owner: PublicKey;
+  hookProgramId?: PublicKey;
+}): TransactionInstruction {
+  const {
+    payer,
+    mint,
+    owner,
+    hookProgramId = RWA_ACCRUAL_PROGRAM_ID,
+  } = params;
+
+  const [clockPda] = getHolderClockPda(mint, owner, hookProgramId);
+
+  const data = Buffer.alloc(40);
+  Buffer.from(INIT_CLOCK_DISCRIMINATOR).copy(data, 0);
+  owner.toBuffer().copy(data, 8);
+
+  return new TransactionInstruction({
+    programId: hookProgramId,
+    keys: [
+      { pubkey: payer, isSigner: true, isWritable: true },
+      { pubkey: mint, isSigner: false, isWritable: false },
+      { pubkey: clockPda, isSigner: false, isWritable: true },
+      { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+    ],
+    data,
+  });
+}
+
+/**
+ * Builds the raw TransactionInstruction to call `buy` on rwa_market.
+ *
+ * Accounts expected:
+ * [0] trader (signer, writable)
+ * [1] asset (writable)
+ * [2] mint (writable)
+ * [3] payout_mint (writable)
+ * [4] vault_rwa_ata (writable)
+ * [5] vault_payout_ata (writable)
+ * [6] token_meta (writable)
  * [7] trader_rwa_ata (writable)
  * [8] trader_payout_ata (writable)
  * [9] rwa_token_program (Token-2022)
@@ -717,6 +773,9 @@ export function createBuyInstruction(params: {
     hookProgramId,
   } = params;
 
+  const isCngn = asset.payoutMint.toBase58() === KNOWN_PAYOUT_MINTS.mainnet.CNGN;
+  const effectivePayoutProgram = isCngn ? TOKEN_2022_PROGRAM_ID : payoutTokenProgram;
+
   const [assetPda] = getAssetPda(mint);
   const [metaPda] = getTokenMetaPda(mint);
   const [vaultPda] = getVaultPda(mint);
@@ -731,7 +790,7 @@ export function createBuyInstruction(params: {
     asset.payoutMint,
     vaultPda,
     true,
-    payoutTokenProgram
+    effectivePayoutProgram
   );
 
   const traderRwaAta = getAssociatedTokenAddressSync(
@@ -744,7 +803,7 @@ export function createBuyInstruction(params: {
     asset.payoutMint,
     trader,
     false,
-    payoutTokenProgram
+    effectivePayoutProgram
   );
 
   const data = Buffer.alloc(24);
@@ -763,7 +822,7 @@ export function createBuyInstruction(params: {
     { pubkey: traderRwaAta, isSigner: false, isWritable: true },
     { pubkey: traderPayoutAta, isSigner: false, isWritable: true },
     { pubkey: TOKEN_2022_PROGRAM_ID, isSigner: false, isWritable: false },
-    { pubkey: payoutTokenProgram, isSigner: false, isWritable: false },
+    { pubkey: effectivePayoutProgram, isSigner: false, isWritable: false },
   ];
 
   if (hookProgramId) {
@@ -808,6 +867,9 @@ export function createSellInstruction(params: {
     hookProgramId,
   } = params;
 
+  const isCngn = asset.payoutMint.toBase58() === KNOWN_PAYOUT_MINTS.mainnet.CNGN;
+  const effectivePayoutProgram = isCngn ? TOKEN_2022_PROGRAM_ID : payoutTokenProgram;
+
   const [assetPda] = getAssetPda(mint);
   const [metaPda] = getTokenMetaPda(mint);
   const [vaultPda] = getVaultPda(mint);
@@ -822,7 +884,7 @@ export function createSellInstruction(params: {
     asset.payoutMint,
     vaultPda,
     true,
-    payoutTokenProgram
+    effectivePayoutProgram
   );
 
   const traderRwaAta = getAssociatedTokenAddressSync(
@@ -835,7 +897,7 @@ export function createSellInstruction(params: {
     asset.payoutMint,
     trader,
     false,
-    payoutTokenProgram
+    effectivePayoutProgram
   );
 
   const data = Buffer.alloc(24);
@@ -854,7 +916,7 @@ export function createSellInstruction(params: {
     { pubkey: traderRwaAta, isSigner: false, isWritable: true },
     { pubkey: traderPayoutAta, isSigner: false, isWritable: true },
     { pubkey: TOKEN_2022_PROGRAM_ID, isSigner: false, isWritable: false },
-    { pubkey: payoutTokenProgram, isSigner: false, isWritable: false },
+    { pubkey: effectivePayoutProgram, isSigner: false, isWritable: false },
   ];
 
   if (hookProgramId) {
@@ -915,8 +977,9 @@ export async function buildBuyTransaction(params: {
     throw new Error(`Amount exceeds max per transaction limit (${asset.maxPerTx.toString()})`);
   }
 
-  const payoutMintInfo = await connection.getAccountInfo(asset.payoutMint);
-  const payoutTokenProgram = payoutMintInfo?.owner ?? TOKEN_PROGRAM_ID;
+  const isCngn = asset.payoutMint.toBase58() === KNOWN_PAYOUT_MINTS.mainnet.CNGN;
+  const payoutMintInfo = isCngn ? null : await connection.getAccountInfo(asset.payoutMint);
+  const payoutTokenProgram = isCngn ? TOKEN_2022_PROGRAM_ID : (payoutMintInfo?.owner ?? TOKEN_PROGRAM_ID);
 
   const quote = calculateBuyQuote({
     amount: amountUnits,
@@ -979,6 +1042,26 @@ export async function buildBuyTransaction(params: {
     console.debug("[buildBuyTransaction] Transfer hook check:", err);
   }
 
+  // If mint uses a transfer hook (e.g. rwa_accrual), ensure trader's holder clock PDA is initialized!
+  if (hookProgramId) {
+    try {
+      const [traderClock] = getHolderClockPda(mint, trader, hookProgramId);
+      const clockAccount = await connection.getAccountInfo(traderClock);
+      if (!clockAccount) {
+        tx.add(
+          createInitClockInstruction({
+            payer,
+            mint,
+            owner: trader,
+            hookProgramId,
+          })
+        );
+      }
+    } catch (clockErr) {
+      console.warn("[buildBuyTransaction] Holder clock check failed:", clockErr);
+    }
+  }
+
   // Add Buy instruction
   tx.add(
     createBuyInstruction({
@@ -1026,8 +1109,9 @@ export async function buildSellTransaction(params: {
     throw new Error("Asset is currently not active for trading on GetEquity");
   }
 
-  const payoutMintInfo = await connection.getAccountInfo(asset.payoutMint);
-  const payoutTokenProgram = payoutMintInfo?.owner ?? TOKEN_PROGRAM_ID;
+  const isCngn = asset.payoutMint.toBase58() === KNOWN_PAYOUT_MINTS.mainnet.CNGN;
+  const payoutMintInfo = isCngn ? null : await connection.getAccountInfo(asset.payoutMint);
+  const payoutTokenProgram = isCngn ? TOKEN_2022_PROGRAM_ID : (payoutMintInfo?.owner ?? TOKEN_PROGRAM_ID);
 
   const quote = calculateSellQuote({
     amount: amountUnits,
@@ -1137,6 +1221,9 @@ export interface JupiterSwapInstructionsResponse {
   setupInstructions?: JupiterInstruction[];
   swapInstruction: JupiterInstruction;
   cleanupInstruction?: JupiterInstruction | null;
+  otherInstructions?: JupiterInstruction[];
+  tipInstruction?: JupiterInstruction | null;
+  addressesByLookupTableAddress?: Record<string, string[]>;
   addressLookupTableAddresses?: string[];
   prioritizationFeeLamports?: number;
   computeUnitLimit?: number;
@@ -1160,7 +1247,7 @@ export function deserializeJupiterInstruction(ix: JupiterInstruction): Transacti
 }
 
 /**
- * Queries the Jupiter Swap Quote API for token routing (e.g. USDC -> cNGN).
+ * Queries the Jupiter Swap v2 Quote API for token routing (e.g. USDC -> cNGN).
  */
 export async function fetchJupiterQuote(params: {
   inputMint: string;
@@ -1170,7 +1257,7 @@ export async function fetchJupiterQuote(params: {
 }): Promise<JupiterQuoteResponse> {
   const { inputMint, outputMint, amountUnits, slippageBps = 50 } = params;
   const apiKey = getJupiterApiKey();
-  const url = `https://api.jup.ag/swap/v1/quote?inputMint=${inputMint}&outputMint=${outputMint}&amount=${amountUnits.toString()}&slippageBps=${slippageBps}`;
+  const url = `https://api.jup.ag/swap/v2/quote?inputMint=${inputMint}&outputMint=${outputMint}&amount=${amountUnits.toString()}&slippageBps=${slippageBps}`;
 
   const res = await fetch(url, {
     method: "GET",
@@ -1188,7 +1275,7 @@ export async function fetchJupiterQuote(params: {
 }
 
 /**
- * Requests raw serialized instructions from Jupiter Swap Instructions API.
+ * Requests raw serialized instructions from Jupiter Swap v2 Instructions API.
  */
 export async function fetchJupiterSwapInstructions(params: {
   quoteResponse: JupiterQuoteResponse;
@@ -1197,7 +1284,7 @@ export async function fetchJupiterSwapInstructions(params: {
 }): Promise<JupiterSwapInstructionsResponse> {
   const { quoteResponse, userPublicKey, wrapAndUnwrapSol = false } = params;
   const apiKey = getJupiterApiKey();
-  const url = "https://api.jup.ag/swap/v1/swap-instructions";
+  const url = "https://api.jup.ag/swap/v2/swap-instructions";
 
   const res = await fetch(url, {
     method: "POST",
@@ -1207,9 +1294,8 @@ export async function fetchJupiterSwapInstructions(params: {
     },
     body: JSON.stringify({
       quoteResponse,
-      userPublicKey,
+      taker: userPublicKey,
       wrapAndUnwrapSol,
-      useSharedAccounts: false,
     }),
   });
 
@@ -1287,8 +1373,9 @@ export async function buildSwapAndBuyTransaction(params: {
     throw new Error("Asset is currently not active for trading on GetEquity");
   }
 
-  const payoutMintInfo = await connection.getAccountInfo(asset.payoutMint);
-  const payoutTokenProgram = payoutMintInfo?.owner ?? TOKEN_PROGRAM_ID;
+  const isCngn = asset.payoutMint.toBase58() === KNOWN_PAYOUT_MINTS.mainnet.CNGN;
+  const payoutMintInfo = isCngn ? null : await connection.getAccountInfo(asset.payoutMint);
+  const payoutTokenProgram = isCngn ? TOKEN_2022_PROGRAM_ID : (payoutMintInfo?.owner ?? TOKEN_PROGRAM_ID);
 
   const usdcMint = KNOWN_PAYOUT_MINTS.mainnet.USDC;
   const cngnMint = asset.payoutMint.toBase58();
@@ -1323,7 +1410,7 @@ export async function buildSwapAndBuyTransaction(params: {
     });
 
     if (buyQuote.amountUnits <= 0n) {
-      throw new Error("USDC amount is too small to purchase any DPRI shares");
+      throw new Error("USDC amount is too small to purchase any shares");
     }
 
     estimatedUsdcCost = inputValue;
@@ -1388,8 +1475,12 @@ export async function buildSwapAndBuyTransaction(params: {
 
   // Resolve Address Lookup Tables
   const altAccounts: AddressLookupTableAccount[] = [];
-  if (swapIxs.addressLookupTableAddresses && swapIxs.addressLookupTableAddresses.length > 0) {
-    for (const altAddr of swapIxs.addressLookupTableAddresses) {
+  const altAddresses = swapIxs.addressesByLookupTableAddress
+    ? Object.keys(swapIxs.addressesByLookupTableAddress)
+    : (swapIxs.addressLookupTableAddresses || []);
+
+  if (altAddresses.length > 0) {
+    for (const altAddr of altAddresses) {
       try {
         const altRes = await connection.getAddressLookupTable(new PublicKey(altAddr));
         if (altRes.value) {
@@ -1455,7 +1546,27 @@ export async function buildSwapAndBuyTransaction(params: {
     )
   );
 
-  // 5. GetEquity Buy instruction (cNGN -> DPRI)
+  // 5. If mint uses a transfer hook (e.g. rwa_accrual), ensure trader's holder clock PDA is initialized!
+  if (hookProgramId) {
+    try {
+      const [traderClock] = getHolderClockPda(mint, trader, hookProgramId);
+      const clockAccount = await connection.getAccountInfo(traderClock);
+      if (!clockAccount) {
+        instructions.push(
+          createInitClockInstruction({
+            payer,
+            mint,
+            owner: trader,
+            hookProgramId,
+          })
+        );
+      }
+    } catch (clockErr) {
+      console.warn("[buildSwapAndBuyTransaction] Holder clock check failed:", clockErr);
+    }
+  }
+
+  // 6. GetEquity Buy instruction (cNGN -> DPRI)
   instructions.push(
     createBuyInstruction({
       trader,

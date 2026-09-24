@@ -238,7 +238,7 @@ const Home = () => {
               const finalAmount = Math.max(dasAmount, onChain.uiAmount);
 
               if (finalAmount > 0) {
-                let unitPriceCngn = 525;
+                let unitPriceCngn = token.minBuyCostPayout && token.minBuyShares ? token.minBuyCostPayout / token.minBuyShares : 525;
                 try {
                   const asset = await fetchRwaAsset(rwaConnection, token.mint);
                   if (asset?.priceCents) {
@@ -461,7 +461,7 @@ const Home = () => {
               {primarySolanaAddress && !stocksOpen && (
                 <div className="space-y-1">
                   <p className="text-sm text-muted-foreground">
-                    View balances for your tokenized US stocks and private market equity positions held in your
+                    View balances for your tokenized US stocks and African stocks held in your
                     Solana wallet.
                   </p>
                   {stockBalances && stockBalances.length > 0 && (
@@ -575,7 +575,7 @@ const Home = () => {
                           className="rounded-full text-xs font-semibold"
                           onClick={() => navigate("/invest/private-market")}
                         >
-                          Browse Private Market
+                          Browse African stocks
                         </Button>
                       </div>
                     </>

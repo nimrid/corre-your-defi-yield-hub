@@ -67,7 +67,7 @@ const InvestPrivateMarket = () => {
           <div className="space-y-2">
             <div className="flex items-center gap-2">
               <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">
-                Private Market &amp; RWAs
+                African stocks &amp; RWAs
               </h1>
               <Badge variant="secondary" className="gap-1 text-xs">
                 <Sparkles className="w-3 h-3 text-primary" />
@@ -75,7 +75,7 @@ const InvestPrivateMarket = () => {
               </Badge>
             </div>
             <p className="text-sm text-muted-foreground">
-              Invest in tokenized real-world assets, private credit, and institutional dealrooms settled on Solana.
+              Invest in tokenized African stocks, real-world assets, private credit, and institutional dealrooms settled on Solana.
             </p>
           </div>
 
@@ -83,7 +83,7 @@ const InvestPrivateMarket = () => {
           <div className="space-y-3">
             <div className="flex items-center justify-between">
               <h2 className="text-sm font-semibold tracking-wide uppercase text-muted-foreground">
-                Tokenized Real-World Assets
+                African Stocks &amp; Tokenized Assets
               </h2>
               <span className="text-xs text-muted-foreground">Instant Settlement on Solana</span>
             </div>

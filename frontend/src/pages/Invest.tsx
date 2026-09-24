@@ -40,7 +40,7 @@ const Invest = () => {
                 value="private-market"
                 className="rounded-full px-4 py-2 text-sm font-medium data-[state=active]:bg-primary data-[state=active]:text-primary-foreground hover:bg-secondary/80 transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                Private Market
+                African stocks
               </TabsTrigger>
             </TabsList>
             <TabsContent value="us-stocks" className="mt-6 space-y-4">
@@ -63,9 +63,9 @@ const Invest = () => {
             <TabsContent value="private-market" className="mt-6">
               <div className="glass-card p-5 sm:p-6 rounded-xl border border-border/60 flex flex-col gap-4">
                 <div className="space-y-1">
-                  <h2 className="text-lg font-semibold">Private Market</h2>
+                  <h2 className="text-lg font-semibold">African stocks</h2>
                   <p className="text-sm text-muted-foreground">
-                    Explore high-yield private market opportunities like real-world assets.
+                    Explore tokenized African equities and high-yield real-world assets.
                   </p>
                 </div>
                 <Button
@@ -73,7 +73,7 @@ const Invest = () => {
                   className="self-start rounded-full px-5 py-2 text-sm font-semibold"
                   onClick={() => navigate("/invest/private-market")}
                 >
-                  Browse Private Market
+                  Browse African stocks
                 </Button>
               </div>
             </TabsContent>

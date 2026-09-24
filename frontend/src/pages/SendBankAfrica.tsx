@@ -340,7 +340,6 @@ const SendBankAfrica = () => {
           chain: Chain.SOLANA,
           webhookURL: webhookUrl("/webhook/paj-ramp"),
           fee: dynamicFee,
-          businessUSDCFee: dynamicFee,
         } as any,
         token,
       );
@@ -385,7 +384,10 @@ const SendBankAfrica = () => {
 
           const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash("confirmed");
 
-          const amountNumber = Number(order.amount);
+          // IMPORTANT: Use the user-specified amount (amountUSDC), NOT order.amount.
+          // The PAJ API returns order.amount = user amount + platform fee (e.g. 10.49 for 10 USDC input).
+          // The fee is already accounted for in the order — we only send what the user agreed to.
+          const amountNumber = Number(amountUSDC);
           const usdcMint = new PublicKey(USDC_MINT);
           
           const fromTokenAccount = await getAssociatedTokenAddress(usdcMint, fromPubkey);

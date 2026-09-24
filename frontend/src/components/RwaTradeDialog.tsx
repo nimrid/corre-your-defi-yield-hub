@@ -9,7 +9,8 @@ import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
-import { ExternalLink, Loader2, CheckCircle2, ArrowRight } from "lucide-react";
+import { ExternalLink, Loader2, CheckCircle2, ArrowRight, AlertCircle } from "lucide-react";
+import { apiFetch } from "@/services/apiClient";
 import type { RwaTokenConfig } from "@/config/rwaTokens";
 import {
   type RwaMarketOverview,
@@ -47,9 +48,11 @@ interface RwaTradeDialogProps {
   marketOverview: RwaMarketOverview | null;
   usdcBalance: number | null;
   cngnBalance?: number | null;
+  solBalance?: number | null;
   userShares: number | null;
   solanaWallet: SolanaWalletLike | null | undefined;
   signTransaction: SignTransactionFn | null | undefined;
+  privyUserId?: string | null;
   onTradeSuccess: () => void;
   initialAmount?: string;
 }
@@ -62,9 +65,11 @@ export default function RwaTradeDialog({
   marketOverview,
   usdcBalance,
   cngnBalance,
+  solBalance: propSolBalance,
   userShares,
   solanaWallet,
   signTransaction,
+  privyUserId,
   onTradeSuccess,
   initialAmount,
 }: RwaTradeDialogProps) {
@@ -83,6 +88,33 @@ export default function RwaTradeDialog({
   const [submitting, setSubmitting] = useState(false);
   const [txSignature, setTxSignature] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  // SOL balance checking for gas/rent
+  const [internalSolBalance, setInternalSolBalance] = useState<number | null>(null);
+  const currentSolBalance = propSolBalance !== undefined && propSolBalance !== null ? propSolBalance : internalSolBalance;
+
+  // Query SOL balance if not passed from parent
+  useEffect(() => {
+    let isMounted = true;
+    const loadSol = async () => {
+      if (!solanaWallet || !open) return;
+      try {
+        const connection = getGetEquityConnection(tokenConfig.cluster);
+        let addr = solanaWallet.address;
+        if (!addr && typeof solanaWallet.getAddress === "function") {
+          addr = await solanaWallet.getAddress();
+        }
+        if (addr) {
+          const lamports = await connection.getBalance(new PublicKey(addr));
+          if (isMounted) setInternalSolBalance(lamports / 1e9);
+        }
+      } catch (err) {
+        console.warn("[RwaTradeDialog] Error checking SOL balance:", err);
+      }
+    };
+    void loadSol();
+    return () => { isMounted = false; };
+  }, [open, solanaWallet, tokenConfig.cluster]);
 
   // Jupiter live quote & rate state
   const [jupRate, setJupRate] = useState<number>(1368.95);
@@ -268,26 +300,26 @@ export default function RwaTradeDialog({
   // Input validation
   const validationError = useMemo(() => {
     if (parsedValue <= 0) return null;
-    const minPayoutCost = tokenConfig.minBuyCostPayout ?? (isCngnSettled ? 5250 : 0);
-    const minShares = tokenConfig.minBuyShares ?? (isCngnSettled ? 10 : 0);
-    const minUsdcCost = jupRate > 0 ? minPayoutCost / jupRate : minPayoutCost / 1368.95;
+    const minPayoutCost = tokenConfig.minBuyCostPayout ?? 0;
+    const minShares = tokenConfig.minBuyShares ?? 0;
+    const minUsdcCost = jupRate > 0 && minPayoutCost > 0 ? minPayoutCost / jupRate : minPayoutCost / 1368.95;
 
     if (isBuy) {
-      // 1. Enforce Minimum Purchase Rule (5,250 cNGN equivalent)
-      if (minPayoutCost > 0) {
+      // 1. Enforce Minimum Purchase Rule (if defined on token config)
+      if (minPayoutCost > 0 || minShares > 0) {
         if (paymentToken === "USDC") {
-          if (buyMode === "usdc" && parsedValue < minUsdcCost * 0.99) {
-            return `Minimum purchase is ~$${minUsdcCost.toFixed(2)} USDC (₦${minPayoutCost.toLocaleString()} ${tokenConfig.payoutSymbol} equivalent, ~${minShares} ${tokenConfig.symbol}).`;
+          if (buyMode === "usdc" && minUsdcCost > 0 && parsedValue < minUsdcCost * 0.99) {
+            return `Minimum purchase is ~$${minUsdcCost.toFixed(2)} USDC (₦${minPayoutCost.toLocaleString()} ${tokenConfig.payoutSymbol} equivalent${minShares > 0 ? `, ~${minShares} ${tokenConfig.symbol}` : ""}).`;
           }
-          if (buyMode === "shares" && parsedValue < minShares) {
-            return `Minimum purchase is ${minShares} ${tokenConfig.symbol} (≈ ₦${minPayoutCost.toLocaleString()} ${tokenConfig.payoutSymbol}, ~$${minUsdcCost.toFixed(2)} USDC).`;
+          if (buyMode === "shares" && minShares > 0 && parsedValue < minShares) {
+            return `Minimum purchase is ${minShares} ${tokenConfig.symbol}${minPayoutCost > 0 ? ` (≈ ₦${minPayoutCost.toLocaleString()} ${tokenConfig.payoutSymbol}, ~$${minUsdcCost.toFixed(2)} USDC)` : ""}.`;
           }
         } else {
-          if (buyMode === "usdc" && parsedValue < minPayoutCost) {
-            return `Minimum purchase is ₦${minPayoutCost.toLocaleString()} ${tokenConfig.payoutSymbol} (~${minShares} ${tokenConfig.symbol}).`;
+          if (buyMode === "usdc" && minPayoutCost > 0 && parsedValue < minPayoutCost) {
+            return `Minimum purchase is ₦${minPayoutCost.toLocaleString()} ${tokenConfig.payoutSymbol}${minShares > 0 ? ` (~${minShares} ${tokenConfig.symbol})` : ""}.`;
           }
-          if (buyMode === "shares" && parsedValue < minShares) {
-            return `Minimum purchase is ${minShares} ${tokenConfig.symbol} (≈ ₦${minPayoutCost.toLocaleString()} ${tokenConfig.payoutSymbol}).`;
+          if (buyMode === "shares" && minShares > 0 && parsedValue < minShares) {
+            return `Minimum purchase is ${minShares} ${tokenConfig.symbol}${minPayoutCost > 0 ? ` (≈ ₦${minPayoutCost.toLocaleString()} ${tokenConfig.payoutSymbol})` : ""}.`;
           }
         }
       }
@@ -295,7 +327,8 @@ export default function RwaTradeDialog({
       // 2. Balance Validation
       if (paymentToken === "USDC") {
         if (usdcBalance !== null) {
-          const cost = buyMode === "usdc" ? parsedValue : (estimatedUsdcCost > 0 ? estimatedUsdcCost : (parsedValue * (marketOverview?.asset?.priceUSD || 525) / jupRate));
+          const fallbackUnitPrice = tokenConfig.minBuyCostPayout && tokenConfig.minBuyShares ? tokenConfig.minBuyCostPayout / tokenConfig.minBuyShares : 525;
+          const cost = buyMode === "usdc" ? parsedValue : (estimatedUsdcCost > 0 ? estimatedUsdcCost : (parsedValue * (marketOverview?.asset?.priceUSD || fallbackUnitPrice) / jupRate));
           if (cost > usdcBalance) {
             return `Insufficient USDC balance. You have ${usdcBalance.toFixed(2)} USDC, need ~${cost.toFixed(2)} USDC.`;
           }
@@ -324,6 +357,7 @@ export default function RwaTradeDialog({
         return `Insufficient shares. You hold ${userShares.toFixed(4)} ${tokenConfig.symbol}.`;
       }
     }
+
     return null;
   }, [
     parsedValue,
@@ -344,8 +378,9 @@ export default function RwaTradeDialog({
   ]);
 
   const handleMin = () => {
-    const minPayout = tokenConfig.minBuyCostPayout ?? 5250;
-    const minShares = tokenConfig.minBuyShares ?? 10;
+    const minPayout = tokenConfig.minBuyCostPayout ?? 0;
+    const minShares = tokenConfig.minBuyShares ?? 0;
+    if (minPayout <= 0 && minShares <= 0) return;
     if (buyMode === "usdc") {
       if (paymentToken === "USDC") {
         const estUsdc = minPayout / (jupRate > 0 ? jupRate : 1368.95);
@@ -366,7 +401,8 @@ export default function RwaTradeDialog({
           setInputValue(String(usdcBalance));
         } else {
           // Estimate max shares from USDC
-          const unitPriceCngn = marketOverview?.asset ? Number(marketOverview.asset.priceCents) / 100 : 525;
+          const fallbackUnitPrice = tokenConfig.minBuyCostPayout && tokenConfig.minBuyShares ? tokenConfig.minBuyCostPayout / tokenConfig.minBuyShares : 525;
+          const unitPriceCngn = marketOverview?.asset ? Number(marketOverview.asset.priceCents) / 100 : fallbackUnitPrice;
           const feeFactor = 1 + (marketOverview?.asset?.feePercent || 1) / 100;
           const cngnEquiv = usdcBalance * jupRate;
           const maxShares = Math.floor((cngnEquiv / (unitPriceCngn * feeFactor)) * 1000) / 1000;
@@ -421,10 +457,11 @@ export default function RwaTradeDialog({
       let finalSharesDisplay = 0;
 
       if (isBuy && paymentToken === "USDC" && isCngnSettled) {
-        // Atomic Jupiter Swap (USDC -> cNGN) + GetEquity Buy (cNGN -> DPRI)
+        // Atomic Jupiter Swap (USDC → cNGN) + GetEquity Buy (cNGN → token)
         const swapRes = await buildSwapAndBuyTransaction({
           connection,
           trader: traderPubkey,
+          payer: traderPubkey,
           mint: mintPubkey,
           spendMode: buyMode,
           inputValue: parsedValue,
@@ -438,6 +475,7 @@ export default function RwaTradeDialog({
         const buyRes = await buildBuyTransaction({
           connection,
           trader: traderPubkey,
+          payer: traderPubkey,
           mint: mintPubkey,
           amountUnits: (standardQuote as BuyQuote).amountUnits,
           slippageBps: standardQuote.slippageBps,
@@ -450,6 +488,7 @@ export default function RwaTradeDialog({
         const sellRes = await buildSellTransaction({
           connection,
           trader: traderPubkey,
+          payer: traderPubkey,
           mint: mintPubkey,
           amountUnits: (standardQuote as SellQuote).amountUnits,
           slippageBps: standardQuote.slippageBps,
@@ -475,16 +514,28 @@ export default function RwaTradeDialog({
           ? signRes.signedTransaction
           : (signRes as Uint8Array);
 
-      // Broadcast to Solana
+      // Broadcast directly to Solana
       const txid = await connection.sendRawTransaction(signedBytes, {
         skipPreflight: false,
         preflightCommitment: "confirmed",
       });
 
-      // Confirm transaction
-      const confirmation = await connection.confirmTransaction(txid, "confirmed");
-      if (confirmation.value.err) {
-        throw new Error(`Transaction failed on-chain: ${JSON.stringify(confirmation.value.err)}`);
+      // Wait for on-chain confirmation
+      try {
+        const { blockhash: _bh, lastValidBlockHeight } = await connection.getLatestBlockhash("confirmed");
+        await connection.confirmTransaction(
+          { signature: txid, blockhash: _bh, lastValidBlockHeight },
+          "confirmed"
+        );
+      } catch (confirmErr) {
+        console.warn("[RwaTradeDialog] confirmTransaction timed out, checking status manually:", confirmErr);
+        const status = await connection.getSignatureStatus(txid);
+        const confirmed =
+          status.value?.confirmationStatus === "confirmed" ||
+          status.value?.confirmationStatus === "finalized";
+        if (!confirmed && status.value?.err) {
+          throw new Error(`Transaction failed on-chain: ${JSON.stringify(status.value.err)}`);
+        }
       }
 
       setTxSignature(txid);
@@ -498,16 +549,48 @@ export default function RwaTradeDialog({
       onTradeSuccess();
     } catch (err: unknown) {
       console.error("[RwaTradeDialog] Trade error:", err);
-      let msg = err instanceof Error ? err.message : "Failed to execute transaction on Solana";
-      if (msg.includes("custom program error: 0x1") || msg.includes("insufficient funds") || msg.includes("insufficient lamports")) {
-        msg = paymentToken === "USDC"
-          ? "Insufficient balance: Your connected wallet does not hold enough USDC or SOL (network fee) to complete this transaction."
-          : `Insufficient balance: Your connected wallet does not hold enough ${tokenConfig.payoutSymbol} to complete this trade.`;
+      let rawMsg = err instanceof Error ? err.message : "Failed to execute transaction on Solana";
+      let userFriendlyMsg = rawMsg;
+
+      // Extract simulation logs if available
+      let simLogs: string[] = [];
+      const connection = getGetEquityConnection(tokenConfig.cluster);
+      if (err && typeof (err as any).getLogs === "function") {
+        try {
+          simLogs = await (err as any).getLogs(connection);
+        } catch {
+          simLogs = (err as any).logs || [];
+        }
+      } else if (err && Array.isArray((err as any).logs)) {
+        simLogs = (err as any).logs;
       }
-      setErrorMessage(msg);
+
+      if (simLogs.length > 0) {
+        console.error("[RwaTradeDialog] Simulation logs:", simLogs);
+      }
+
+      if (
+        rawMsg.includes("custom program error: 0x1") ||
+        rawMsg.includes("insufficient funds") ||
+        simLogs.some((l) => l.includes("insufficient funds") || l.includes("custom program error: 0x1"))
+      ) {
+        userFriendlyMsg = paymentToken === "USDC"
+          ? "Insufficient funds: Your connected wallet does not hold enough USDC to complete this transaction."
+          : `Insufficient funds: Your connected wallet does not hold enough ${tokenConfig.payoutSymbol} to complete this trade.`;
+      } else if (
+        rawMsg.includes("SlippageToleranceExceeded") ||
+        simLogs.some((l) => l.includes("SlippageToleranceExceeded"))
+      ) {
+        userFriendlyMsg = "Price moved or slippage tolerance exceeded during the swap. Please try again.";
+      } else if (simLogs.length > 0) {
+        const specificErr = simLogs.find((l) => l.includes("Error:") || l.includes("failed:") || l.includes("AnchorError"));
+        if (specificErr) userFriendlyMsg = `Transaction rejected: ${specificErr}`;
+      }
+
+      setErrorMessage(userFriendlyMsg);
       toast({
         title: "Trade Failed",
-        description: msg,
+        description: userFriendlyMsg,
         variant: "destructive",
       });
     } finally {
@@ -609,7 +692,7 @@ export default function RwaTradeDialog({
                       <ArrowRight className="w-3 h-3 text-primary" />
                       <span>cNGN (Orca)</span>
                       <ArrowRight className="w-3 h-3 text-primary" />
-                      <span>DPRI</span>
+                      <span>{tokenConfig.symbol}</span>
                     </div>
                     <div className="font-semibold text-primary">
                       {jupRateLoading ? (
@@ -688,9 +771,15 @@ export default function RwaTradeDialog({
                     isBuy
                       ? buyMode === "usdc"
                         ? paymentToken === "USDC"
-                          ? (5250 / jupRate).toFixed(2)
-                          : "5250"
-                        : "10"
+                          ? tokenConfig.minBuyCostPayout
+                            ? ((tokenConfig.minBuyCostPayout) / jupRate).toFixed(2)
+                            : "1.00"
+                          : tokenConfig.minBuyCostPayout
+                          ? String(tokenConfig.minBuyCostPayout)
+                          : "500"
+                        : tokenConfig.minBuyShares
+                        ? String(tokenConfig.minBuyShares)
+                        : "1"
                       : "0.00"
                   }
                   value={inputValue}
@@ -698,7 +787,7 @@ export default function RwaTradeDialog({
                   className="pr-28 text-lg font-medium"
                 />
                 <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1.5">
-                  {isBuy && (tokenConfig.minBuyCostPayout || isCngnSettled) && (
+                  {isBuy && Boolean(tokenConfig.minBuyCostPayout || tokenConfig.minBuyShares) && (
                     <button
                       type="button"
                       onClick={handleMin}
@@ -726,13 +815,13 @@ export default function RwaTradeDialog({
               </div>
 
               {/* Min Order Notice */}
-              {isBuy && (tokenConfig.minBuyCostPayout || isCngnSettled) && (
+              {isBuy && Boolean(tokenConfig.minBuyCostPayout || tokenConfig.minBuyShares) && (
                 <div className="flex items-center justify-between text-[11px] text-muted-foreground px-0.5">
                   <span>Min. Order Required:</span>
                   <span className="font-semibold text-foreground">
                     {paymentToken === "USDC"
-                      ? `~$${(5250 / jupRate).toFixed(2)} USDC (₦5,250 cNGN · 10 ${tokenConfig.symbol})`
-                      : `₦5,250 cNGN (10 ${tokenConfig.symbol})`}
+                      ? `~$${(((tokenConfig.minBuyCostPayout ?? 0)) / jupRate).toFixed(2)} USDC (₦${(tokenConfig.minBuyCostPayout ?? 0).toLocaleString()} cNGN${tokenConfig.minBuyShares ? ` · ${tokenConfig.minBuyShares} ${tokenConfig.symbol}` : ""})`
+                      : `₦${(tokenConfig.minBuyCostPayout ?? 0).toLocaleString()} cNGN${tokenConfig.minBuyShares ? ` (${tokenConfig.minBuyShares} ${tokenConfig.symbol})` : ""}`}
                   </span>
                 </div>
               )}
@@ -790,9 +879,9 @@ export default function RwaTradeDialog({
                   </span>
                 </div>
                 <div className="flex items-center justify-between text-muted-foreground">
-                  <span>DPRI Unit Price</span>
+                  <span>{tokenConfig.symbol} Unit Price</span>
                   <span className="font-medium text-foreground">
-                    ₦{((marketOverview?.asset ? Number(marketOverview.asset.priceCents) / 100 : 525)).toLocaleString(undefined, { minimumFractionDigits: 2 })} cNGN
+                    ₦{((marketOverview?.asset ? Number(marketOverview.asset.priceCents) / 100 : (tokenConfig.minBuyCostPayout && tokenConfig.minBuyShares ? tokenConfig.minBuyCostPayout / tokenConfig.minBuyShares : 525))).toLocaleString(undefined, { minimumFractionDigits: 2 })} cNGN
                   </span>
                 </div>
 
@@ -825,6 +914,16 @@ export default function RwaTradeDialog({
               </div>
             )}
 
+            {marketOverview?.asset && !marketOverview.asset.isActive && (
+              <div className="rounded-xl bg-amber-500/10 border border-amber-500/20 p-3 text-xs text-amber-600 dark:text-amber-400 flex items-start gap-2">
+                <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                <div>
+                  <span className="font-semibold block">Trading Pending Activation on Solana</span>
+                  <span>This asset is currently inactive on-chain on GetEquity. Orders will be enabled as soon as the issuer opens the trading window.</span>
+                </div>
+              </div>
+            )}
+
             {validationError && (
               <p className="text-xs text-destructive">{validationError}</p>
             )}
@@ -850,6 +949,8 @@ export default function RwaTradeDialog({
                   <Loader2 className="w-4 h-4 animate-spin" />
                   <span>{isBuy && paymentToken === "USDC" ? "Executing Swap & Buy..." : "Submitting to Solana..."}</span>
                 </span>
+              ) : marketOverview?.asset && !marketOverview.asset.isActive ? (
+                "Trading Inactive On-Chain"
               ) : isBuy ? (
                 paymentToken === "USDC" ? (
                   estimatedShares > 0 ? (

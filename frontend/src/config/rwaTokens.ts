@@ -39,8 +39,24 @@ export const RWA_TOKENS: RwaTokenConfig[] = [
     description: "Pre-IPO equity allocation in the Dangote Petroleum Refinery complex.",
     cluster: "mainnet-beta",
     icon: "https://res.cloudinary.com/djalafcj9/image/upload/v1789376611/getequity/profiles/user/kmtjh3f6nlvsyup1hqpu.png",
-    minBuyCostPayout: 5250, // ₦5,250 cNGN
-    minBuyShares: 10, // 10 DPRI shares
+  },
+  {
+    id: "ntbs5",
+    name: "Nigerian Treasury Bill Series 5",
+    symbol: "NTBS5",
+    mint: "9C3xMC6J3dWnwLof5xwCasN4tVtNcxVCpbCbrVBmGWwj",
+    payoutMint: "3jiqwBQVRC5zRwHyqvnkQurebJ5RNxg3F5fXMwaxgkv8", // Mainnet cNGN
+    payoutSymbol: "cNGN",
+    decimals: 6,
+    payoutDecimals: 6,
+    category: "Fund",
+    issuer: "Comercio Partners",
+    location: "Nigeria",
+    description: "Tokenized Nigerian Treasury Bill Series 5 yielding 16.50% p.a. settled in cNGN on Solana.",
+    cluster: "mainnet-beta",
+    icon: "https://res.cloudinary.com/djalafcj9/image/upload/v1718131106/getequity/profiles/user/pxosjt6yphhalmdwxvkz.png",
+    minBuyCostPayout: 10000, // ₦10,000 cNGN (1 unit)
+    minBuyShares: 1, // 1 NTBS5 unit
   },
 ];
 
