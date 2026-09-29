@@ -1,39 +1,63 @@
+# Dependencies & Build Output
+node_modules
+dist
+**/dist
+target
+**/target
+dist-ssr
+*.tsbuildinfo
+
 # Logs
 logs
 *.log
 npm-debug.log*
 yarn-debug.log*
-yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
-
-node_modules
-dist
-dist-ssr
-*.local
 
 # Env files
 *.env
 *.env.local
+*.env.*.local
 
-# Editor directories and files
+# Editor directories & system files
 .vscode/*
 !.vscode/extensions.json
 .idea
 .DS_Store
+**/.DS_Store
 *.suo
 *.ntvs*
 *.njsproj
 *.sln
 *.sw?
+*~
+
+# Database files
+*.db
+*.sqlite
+*.sqlite-journal
+
+# Ignored documentation & checklists
 GAS_SPONSORSHIP_CHECKLIST.md
 GAS_SPONSORSHIP_SECURITY.md
 PRIVY_WEBHOOK_SETUP.md
 HELIUS_WEBHOOK_SETUP.md
 USDC_DEPOSIT_DISPLAY.md
 
-# Ignored backend scripts
+# Ignored backend scratch/test scripts
 backend/*.cjs
 backend/src/test_save.ts
 backend/src/test-yield-email.ts
 backend/test-*.ts
+backend/check_db.js
+
+# Video media files
+*.mp4
+*.webm
+*.mov
+*.m4v
+*.avi
+*.mkv
+*.flv
+*.wmv

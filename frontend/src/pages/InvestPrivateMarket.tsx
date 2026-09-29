@@ -111,9 +111,6 @@ const InvestPrivateMarket = () => {
                         <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4">
                           {token.symbol}
                         </Badge>
-                        <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-4 bg-primary/10 text-primary border-primary/20">
-                          Solana Mainnet
-                        </Badge>
                       </div>
                       <p className="text-xs text-muted-foreground flex items-center gap-1.5">
                         <Building2 className="w-3 h-3" />

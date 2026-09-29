@@ -58,6 +58,27 @@ export const RWA_TOKENS: RwaTokenConfig[] = [
     minBuyCostPayout: 10000, // ₦10,000 cNGN (1 unit)
     minBuyShares: 1, // 1 NTBS5 unit
   },
+  {
+    id: "gntb",
+    name: "GetEquity Nigerian Treasury Bills Fund",
+    symbol: "gNTB",
+    mint:
+      import.meta.env.VITE_GETEQUITY_GNTB_MINT ||
+      "CsMkseiQZJiaXSyiE7NZayosWWQmycwdYxU85aYCxg5d",
+    payoutMint: "3jiqwBQVRC5zRwHyqvnkQurebJ5RNxg3F5fXMwaxgkv8", // Mainnet cNGN
+    payoutSymbol: "cNGN",
+    decimals: 6,
+    payoutDecimals: 6,
+    category: "Fund",
+    issuer: "BAS Capital",
+    location: "Nigeria",
+    description: "Tokenized Nigerian Treasury Bills Fund yielding 15.50% p.a. settled in cNGN on Solana.",
+    dealUrl: "https://getequity.io/token/6ab53b88d3c1b700027204ad",
+    cluster: "mainnet-beta",
+    icon: "https://res.cloudinary.com/djalafcj9/image/upload/v1790261870/getequity/profiles/user/y25bkolqctaug5w5nuoh.png",
+    minBuyCostPayout: 1000, // ₦1,000 cNGN (1,000 units)
+    minBuyShares: 1000, // 1,000 gNTB units
+  },
 ];
 
 export function findRwaToken(query: string): RwaTokenConfig | undefined {

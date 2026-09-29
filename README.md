@@ -1,30 +1,41 @@
-# Corre: The Ultimate DeFi Yield Hub 🚀
+# Corre: Decentralized Yield Hub & Capital Markets on Solana 🌐⚡
 
-Corre is a premium DeFi ecosystem designed to simplify yield generation, cross-border payments, and real-world asset investing. Built for the modern user, it bridges the gap between traditional finance and decentralized protocols, with a special focus on accessibility and gas-optimized experiences.
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Network: Solana](https://img.shields.io/badge/Network-Solana-9945FF?logo=solana&logoColor=white)](https://solana.com)
+[![TypeScript](https://img.shields.io/badge/TypeScript-007ACC?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
+[![React](https://img.shields.io/badge/React-18-61DAFB?logo=react&logoColor=black)](https://react.dev/)
+[![Express](https://img.shields.io/badge/Express-Backend-000000?logo=express&logoColor=white)](https://expressjs.com/)
 
-![Corre Dashboard Preview](https://images.unsplash.com/photo-1639762681485-074b7f938ba0?auto=format&fit=crop&q=80&w=2000)
+**Corre** is a high-performance decentralized finance platform and capital markets gateway built on Solana. It bridges real-world assets, automated yield optimization, and AI agent execution into an accessible, gas-optimized web application.
 
-## ✨ Core Features
+---
 
-### 💰 Yield Hub (Savings)
-- **Standard Savings Vault**: High-performance yield generation for your USDC.
-- **Shielded Savings Vault**: Protected yield opportunities with enhanced security parameters.
-- **Automated Management**: Powered by institutional-grade protocols like Lulo and LI.FI.
+## ⚡ Core Capabilities
 
-### 📈 Global Investing
-- **Tokenized US Stocks**: Buy fractional shares of top US companies (AAPL, MSFT, TSLA, etc.) directly on the Solana blockchain.
-- **Jupiter Integration**: Seamless execution and best-price routing for all tokenized asset trades.
-- **Real-time Analytics**: Built-in TradingView charts and market performance monitoring.
+### 💰 High-Yield USDC Savings
+- **Standard Savings Vault**: Automated yield strategies targeting ~8.5% APY via institutional-grade lending protocols (Lulo).
+- **Shielded Savings Vault**: Curated capital-preservation vault (~6.2% APY) with tight collateralization limits.
+- **Real-Time Interest Accrual**: Track compounding returns by the second with zero lockup periods.
 
-### 🌍 Seamless Payments & On-boarding
-- **Fiat On/Off-Ramp**: Purchase USDC directly with bank accounts, with optimized support for **Naira (NGN)** and other African corridors.
-- **Cross-Border Transfers**: Send USDC to any wallet or directly to bank accounts in supported regions.
-- **Gas-Sponsored Transactions**: Enjoy a "gas-less" experience for supported transactions using Privy embedded wallets.
+### 📈 Tokenized US Equities & Capital Markets
+- **Fractional US Stocks**: Trade tokenized shares of leading US companies (NVDA, AAPL, MSFT, TSLA, SPY, and more) 24/7 on Solana.
+- **Deep Liquidity Routing**: Best-price execution through Jupiter swap aggregators.
+- **Interactive Charting**: Embedded TradingView analytics and Pyth oracle price feeds.
 
-### 🛡️ Secure & Private
-- **Hybrid Auth**: Secure login via **Privy**, supporting both email/social logins and existing Web3 wallets.
-- **Private Beta**: Controlled ecosystem growth via a referral-based early access system.
-- **Enterprise Security**: Comprehensive gas sponsorship protection and rate-limiting to prevent abuse.
+### 💸 Fast Transfers & Global Ramping
+- **Direct Solana Transfers**: Send USDC and SOL to any Solana wallet address with automatic recipient Associated Token Account (ATA) creation.
+- **Cross-Border Fiat Ramps**: Direct bank deposits and withdrawals with optimized corridors for African markets (Naira/NGN via Paj Ramp).
+- **Gas-Sponsored Experience**: Eligible transactions execute completely gasless through Privy embedded wallets and backend fee sponsorship.
+
+---
+
+## 🤖 AI Ecosystem (Model Context Protocol)
+
+Corre is built for agentic finance, providing a Remote MCP Server:
+
+* **Remote MCP Server (`mcp.corre.bond`)**:
+  * Production SSE endpoint for ChatGPT, Claude, Cursor, and autonomous agents.
+  * Read vault rates, retrieve stock prices, and prepare transactions with deep-link authorizations.
 
 ---
 
@@ -32,63 +43,78 @@ Corre is a premium DeFi ecosystem designed to simplify yield generation, cross-b
 
 | Layer | Technologies |
 | :--- | :--- |
-| **Frontend** | React, Vite, TypeScript, Tailwind CSS, shadcn/ui, Lucide Icons |
-| **State & Data** | TanStack Query (React Query), viem, ethers.js, @solana/web3.js |
-| **Backend** | Node.js, Express, PostgreSQL, Inngest (Background Jobs) |
-| **Authentication** | Privy (Email, Social, Embedded Wallets) |
-| **Infrastructure** | Supabase, Resend (Email), Svix (Webhooks), Alchemy RPC |
-| **Integrations** | LI.FI Earn, Jupiter (Solana), Lulo, Paj Ramp |
+| **Frontend** | React 18, Vite, TypeScript, Tailwind CSS, shadcn/ui, Radix UI, Lucide Icons |
+| **Blockchain / Web3** | Solana (`@solana/web3.js`, `@solana/spl-token`), Jupiter API, Lulo Protocol |
+| **AI Protocol** | Model Context Protocol SDK (`@modelcontextprotocol/sdk`) |
+| **Backend API** | Node.js, Express, TypeScript, `@neondatabase/serverless` (WebSockets) |
+| **Database & Caching** | PostgreSQL (Neon), Upstash Redis |
+| **Authentication** | Privy (Embedded Solana wallets, Social & Email login) |
+| **Automation** | Inngest (Background yield distribution, auto-claim processing) |
+
+---
+
+## 📁 Repository Structure
+
+```
+corre-your-defi-yield-hub/
+├── frontend/               # React + Vite client application
+│   ├── src/
+│   │   ├── components/     # UI widgets, layout, navigation & status badges
+│   │   ├── hooks/          # React Query & session monitoring hooks
+│   │   ├── pages/          # Home, Savings, Stocks, Transfers & Admin
+│   │   └── services/       # API client & backend routing helpers
+├── backend/                # Express REST API & Remote MCP Server
+│   ├── src/
+│   │   ├── controllers/    # Route controllers for users, stocks, & transfers
+│   │   ├── mcp/            # Remote MCP tools & SSE protocol handlers
+│   │   ├── routes/         # Express endpoint definitions
+│   │   ├── services/       # Privy wallet operations & gas sponsorship logic
+│   │   └── db.ts           # PostgreSQL connection pool with WebSocket fallback
+└── README.md               # Project overview
+```
 
 ---
 
 ## 🚀 Getting Started
 
 ### Prerequisites
-- Node.js (v18+)
-- PostgreSQL Database
-- Privy Application ID
-- Jupiter API Key (for In-App Trading)
-- Alchemy/Helius API Key (for Solana DAS/RPC)
+* **Node.js** (v18.x or higher)
+* **npm** or **pnpm**
+* **PostgreSQL** database (e.g. Neon)
+* **Privy App ID & Secret**
 
-### Installation
+### 1. Clone & Install
+```bash
+git clone https://github.com/nimrid/corre-your-defi-yield-hub.git
+cd corre-your-defi-yield-hub
+```
 
-1. **Clone the repository**
-   ```bash
-   git clone <repository-url>
-   cd corre-your-defi-yield-hub
-   ```
+### 2. Configure Backend
+```bash
+cd backend
+npm install
+cp .env.example .env    # Populate DATABASE_URL, PRIVY_APP_ID, etc.
+npm run dev             # Starts backend on http://localhost:4000
+```
 
-2. **Setup Backend**
-   ```bash
-   cd backend
-   npm install
-   cp .env.example .env # Configure your DB and API keys
-   npm run dev
-   ```
-
-3. **Setup Frontend**
-   ```bash
-   cd ../frontend
-   npm install
-   npm run dev
-   ```
+### 3. Configure Frontend
+```bash
+cd ../frontend
+npm install
+cp .env.example .env    # Populate VITE_PRIVY_APP_ID, VITE_SOLANA_RPC, etc.
+npm run dev             # Starts frontend on http://localhost:8080
+```
 
 ---
-
-## 🏗️ Architecture
-
-Corre follows a modern full-stack architecture:
-- **`frontend/`**: A highly responsive React SPA optimized for mobile and desktop.
-- **`backend/`**: A robust Express API handling user synchronization, transaction logging, and gas sponsorship logic.
-- **`worker/` (Inngest)**: Background processing for transaction verification and referral rewards.
 
 ## 📜 Documentation
-- [Gas Sponsorship Security](GAS_SPONSORSHIP_SECURITY.md) - Details on our anti-abuse implementation.
-- [Privy Webhook Setup](PRIVY_WEBHOOK_SETUP.md) - Guide for configuring authentication hooks.
+
+* 🌍 **[Frontend & African Stocks Architecture](frontend/README.md)** — Guide to client architecture, tokenized African equities ($DPRI), sovereign treasury bills ($NTBS5), and dual-currency (USDC/cNGN) rails.
+* 🛡️ **[Gas Sponsorship Security](GAS_SPONSORSHIP_SECURITY.md)** — Anti-abuse rules, spending ceilings, and transaction rate limits.
+* 🔐 **[Privy Webhook Setup](PRIVY_WEBHOOK_SETUP.md)** — Configuring user lifecycle hooks and Svix signature verification.
 
 ---
 
-<div align="center">
-  <p>Built with ❤️ for the future of finance.</p>
-  <p><b>Corre Beta</b> — Join the revolution.</p>
-</div>
+## 📄 License
+
+This project is licensed under the **[MIT License](LICENSE)**.
