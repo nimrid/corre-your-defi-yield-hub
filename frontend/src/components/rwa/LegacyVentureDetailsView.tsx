@@ -416,11 +416,11 @@ export const LegacyVentureDetailsView: React.FC<LegacyVentureDetailsViewProps> =
                 <span className="text-sm text-muted-foreground">
                   Account Number:
                 </span>
-                <span className="font-semibold text-sm">8885765485</span>
+                <span className="font-semibold text-sm">6520702169</span>
               </div>
               <div className="flex justify-between items-center">
                 <span className="text-sm text-muted-foreground">Bank:</span>
-                <span className="font-semibold text-sm">PalmPay</span>
+                <span className="font-semibold text-sm">Opay</span>
               </div>
             </div>
           </div>
