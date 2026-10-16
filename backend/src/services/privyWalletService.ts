@@ -16,14 +16,14 @@ import { pool } from "../db.js";
 import { resolveUserId } from "../lib/dbHelpers.js";
 import { invalidateCache } from "../lib/responseCache.js";
 import { recordReferralAction, REFERRAL_POINTS } from "../lib/referral.js";
-import { findStockToken } from "../config/usStockTokens.js";
+import { findStockToken, getStockDecimals } from "../config/usStockTokens.js";
 import crypto from "crypto";
 import canonicalize from "canonicalize";
 
 // ── Constants ──────────────────────────────────────────────────────────────────
 const USDC_MINT = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
 const USDC_DECIMALS = 6;
-const LULO_REFERRER = "6pZiqTT81nKLxMvQay7P6TrRx9NdWG5zbakaZdQoWoUb";
+const LULO_REFERRER = (process.env.LULO_REFERRER || "597T8XMSLJkt39cmTivoQdEBKyufXGipC2nKeJSzPmHe").trim();
 const LULO_BASE_URL = "https://api.lulo.fi";
 const MAX_IN_CHAT_AMOUNT_USDC = 500; // Maximum single tx for in-chat signing
 
@@ -1008,8 +1008,9 @@ async function recordTransaction(pending: PendingTransaction, txSignature: strin
       const stockName = pending.stockName || stockConfig?.name || pending.stockSymbol || "Tokenized US Stock";
       const stockSymbol = pending.stockSymbol || stockConfig?.symbol || "STOCK";
       const stockMint = pending.stockMint || stockConfig?.mint || "XsDoVfqeBukxuZHWhdvWHBhgEHjGNst4MLodqsJHzoB";
+      const decimals = getStockDecimals(stockMint);
       const sharesAmountStr = pending.outAmountRaw
-        ? (Number(pending.outAmountRaw) / 1_000_000).toString()
+        ? (Number(pending.outAmountRaw) / (10 ** decimals)).toString()
         : (pending.sharesAmount ? pending.sharesAmount.toString() : null);
       const sharesDelta = sharesAmountStr ? parseFloat(sharesAmountStr) : 0;
 
@@ -1136,7 +1137,8 @@ export async function executeJupiterStockOrder(
   if (isBuy) {
     rawAmount = Math.round(pending.usdcAmount * 1_000_000);
   } else {
-    rawAmount = Math.round((pending.sharesAmount || 1) * 1_000_000);
+    const decimals = getStockDecimals(stockMint);
+    rawAmount = Math.round((pending.sharesAmount || 1) * (10 ** decimals));
   }
 
   const apiKey = (process.env.VITE_JUP_API_KEY || process.env.JUPITER_API_KEY || "7533d7b5-93c3-43ed-942e-08a8142c2dd4").trim();

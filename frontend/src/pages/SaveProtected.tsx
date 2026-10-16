@@ -11,7 +11,7 @@ import { apiFetch } from "@/services/apiClient";
 import { Buffer } from "buffer";
 
 const USDC_MINT = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
-const LULO_REFERRER = "6pZiqTT81nKLxMvQay7P6TrRx9NdWG5zbakaZdQoWoUb";
+const LULO_REFERRER = (import.meta.env.VITE_LULO_REFERRER || "597T8XMSLJkt39cmTivoQdEBKyufXGipC2nKeJSzPmHe").trim();
 const savings_base_url = "https://api.lulo.fi";
 
 const SaveProtected = () => {
