@@ -15,12 +15,10 @@ import withdrawalRoutes from "./routes/withdrawalRoutes.js";
 import gasSponsorshipRoutes from "./routes/gasSponsorshipRoutes.js";
 import pajSessionRoutes from "./routes/pajSessionRoutes.js";
 import aiRoutes from "./routes/aiRoutes.js";
-import africaRoutes from "./routes/africaRoutes.js";
 import heliusWebhookRoutes from "./routes/heliusWebhook.js";
 import privyWebhookRoutes from "./routes/privyWebhook.js";
 import pajWebhookRoutes from "./routes/pajWebhook.js";
 import adminRoutes from "./routes/adminRoutes.js";
-import investRoutes from "./routes/investRoutes.js";
 
 // ── Schema bootstrap
 import { runMigrations } from "./migrations.js";
@@ -28,7 +26,9 @@ import { runMigrations } from "./migrations.js";
 // Inngest
 import { serve } from "inngest/express";
 import { inngest } from "./inngest/client.js";
-import { sendWeeklyYieldEmails } from "./inngest/functions.js";
+import {
+  sendWeeklyYieldEmails,
+} from "./inngest/functions.js";
 
 // ── Environment ──────────────────────────────────────────────────────────────
 dotenv.config();
@@ -344,13 +344,19 @@ app.use("/gas-sponsorship", gasSponsorshipRoutes);
 app.use("/paj-session", pajSessionRoutes);
 app.use("/ai", aiRoutes);
 app.use("/admin", adminRoutes);
-app.use("/investments", investRoutes);
 
 // ── Third-party integration routes ───────────────────────────────────────────
-app.use("/fonbnk/africa", africaRoutes);
 app.use("/api/webhooks", heliusWebhookRoutes);
 app.use("/webhook/paj-ramp", pajWebhookRoutes);
-app.use("/api/inngest", serve({ client: inngest, functions: [sendWeeklyYieldEmails] }));
+app.use(
+  "/api/inngest",
+  serve({
+    client: inngest,
+    functions: [
+      sendWeeklyYieldEmails,
+    ],
+  })
+);
 
 // ── Backward-compatible route aliases ────────────────────────────────────────
 // These preserve the original URL paths so the frontend doesn't need changes.

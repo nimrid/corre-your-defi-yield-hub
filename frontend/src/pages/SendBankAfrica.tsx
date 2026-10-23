@@ -91,6 +91,7 @@ const SendBankAfrica = () => {
     fiatAmount: number;
     rate: number;
     fee: number;
+    platformFee: number;
   } | null>(null);
 
   useEffect(() => {
@@ -354,6 +355,7 @@ const SendBankAfrica = () => {
               fiatAmount: order.fiatAmount,
               rate: order.rate,
               fee: order.fee,
+              platformFee: dynamicFee,
             }
           : null
       );
@@ -1027,24 +1029,40 @@ const SendBankAfrica = () => {
                         <p>Amount sent</p>
                       </div>
                     )}
-                    {createdOrder?.fiatAmount !== undefined && (
-                      <div>
-                        <p className="font-medium text-foreground">₦{createdOrder.fiatAmount.toLocaleString()}</p>
-                        <p>You receive</p>
-                      </div>
-                    )}
+                    {(() => {
+                      // Calculate the final received fiat amount:
+                      // Prefer the API-returned fiatAmount; fall back to local calculation.
+                      const fee = createdOrder?.platformFee ?? createdOrder?.fee ?? currentFee;
+                      const rate = createdOrder?.rate ?? baseRate ?? 0;
+                      const netUSDC = Math.max(0, (createdOrder?.amount ?? 0) - fee);
+                      const finalFiat =
+                        createdOrder?.fiatAmount && createdOrder.fiatAmount > 0
+                          ? createdOrder.fiatAmount
+                          : netUSDC * rate;
+                      return (
+                        <div>
+                          <p className="font-medium text-foreground">
+                            ₦{finalFiat.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          </p>
+                          <p>You receive</p>
+                        </div>
+                      );
+                    })()}
                     {createdOrder?.rate !== undefined && (
                       <div>
                         <p className="font-medium text-foreground">₦{createdOrder.rate.toLocaleString()}</p>
                         <p>Rate per USDC</p>
                       </div>
                     )}
-                    {createdOrder?.fee !== undefined && (
-                      <div>
-                        <p className="font-medium text-foreground">{(createdOrder.fee || currentFee).toFixed(2)} USDC</p>
-                        <p>Fee</p>
-                      </div>
-                    )}
+                    {(() => {
+                      const displayFee = createdOrder?.platformFee ?? createdOrder?.fee ?? currentFee;
+                      return (
+                        <div>
+                          <p className="font-medium text-foreground">{displayFee.toFixed(2)} USDC</p>
+                          <p>Fee</p>
+                        </div>
+                      );
+                    })()}
                   </div>
                   {createdOrderId && (
                     <p className="text-xs text-muted-foreground font-mono">Order ID: {createdOrderId}</p>

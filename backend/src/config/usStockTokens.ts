@@ -2,6 +2,7 @@ export interface USStockTokenConfig {
   mint: string;
   name: string;
   symbol: string;
+  decimals?: number;
 }
 
 export const US_STOCK_TOKENS: USStockTokenConfig[] = [
@@ -71,4 +72,12 @@ export function findStockToken(query: string): USStockTokenConfig | undefined {
       t.name.toUpperCase().includes(normalized) ||
       t.mint === query.trim()
   );
+}
+
+export function getStockDecimals(queryOrMint: string): number {
+  const token = findStockToken(queryOrMint);
+  if (token?.decimals != null) return token.decimals;
+  // All xStocks (mint starts with Xs or Token-2022 equities) use 8 decimals on Solana
+  if (token?.mint.startsWith("Xs") || queryOrMint.startsWith("Xs")) return 8;
+  return 8;
 }

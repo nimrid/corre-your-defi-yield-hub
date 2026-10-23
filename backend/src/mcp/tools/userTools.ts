@@ -254,16 +254,30 @@ export const userTools: MCPTool[] = [
       const finalStandardVaultUsdc = liveLuloBalances.standardBalance > 0 ? liveLuloBalances.standardBalance : Math.max(0, dbStandard);
       const totalSavingsUsdc = Number((finalShieldedVaultUsdc + finalStandardVaultUsdc).toFixed(2));
 
-      // 4. Enrich stock holdings with human-readable ticker symbol & name
-      const enrichedStockHoldings = holdingsRes.rows.map((row: any) => {
-        const stockConfig = findStockToken(row.stockMint);
-        return {
-          symbol: stockConfig?.symbol || "STOCK",
-          name: stockConfig?.name || "Tokenized US Stock",
-          shares: Number(row.shares),
-          stockMint: row.stockMint,
-        };
-      });
+      // 4. Enrich stock holdings with live on-chain balances + real-time Jupiter prices
+      let combinedStockHoldings: any[] = [];
+
+      if (liveSolanaBalances.stockHoldings && liveSolanaBalances.stockHoldings.length > 0) {
+        combinedStockHoldings = liveSolanaBalances.stockHoldings;
+      } else {
+        combinedStockHoldings = holdingsRes.rows.map((row: any) => {
+          const stockConfig = findStockToken(row.stockMint);
+          return {
+            symbol: stockConfig?.symbol || "STOCK",
+            name: stockConfig?.name || "Tokenized US Stock",
+            shares: Number(row.shares),
+            stockMint: row.stockMint,
+          };
+        });
+      }
+
+      const totalStockPortfolioUsd = liveSolanaBalances.totalStockValueUsd || 0;
+      const formattedTotalStockPortfolio = `$${totalStockPortfolioUsd.toLocaleString("en-US", { minimumFractionDigits: 2 })} USDC`;
+
+      const totalPortfolioValueUsd = Number(
+        (liveSolanaBalances.usdcBalance + totalSavingsUsdc + totalStockPortfolioUsd).toFixed(2)
+      );
+      const formattedTotalPortfolio = `$${totalPortfolioValueUsd.toLocaleString("en-US", { minimumFractionDigits: 2 })} USDC`;
 
       // 5. Construct QR Code & Summary Text
       const qrCodeUrl = walletAddress ? `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(walletAddress)}` : "";
@@ -273,11 +287,11 @@ export const userTools: MCPTool[] = [
       const formattedShieldedVault = `$${finalShieldedVaultUsdc.toLocaleString("en-US", { minimumFractionDigits: 2 })} USDC`;
       const formattedStandardVault = `$${finalStandardVaultUsdc.toLocaleString("en-US", { minimumFractionDigits: 2 })} USDC`;
 
-      const stockSummaryStr = enrichedStockHoldings.length > 0
-        ? enrichedStockHoldings.map((s: any) => `${s.name} (${s.symbol}): ${s.shares} shares`).join(", ")
+      const stockSummaryStr = combinedStockHoldings.length > 0
+        ? combinedStockHoldings.map((s: any) => `${s.name} (${s.symbol}): ${s.shares} shares${s.formattedValueUsd ? ` (≈ ${s.formattedValueUsd})` : ''}`).join(", ")
         : "No active stock holdings";
 
-      const portfolioSummaryText = `Solana Wallet: ${formattedWalletUsdc} (${formattedWalletSol}) | Shielded Savings Vault (~${liveLuloYields.shieldedVaultAPY} APY): ${formattedShieldedVault} | Standard Savings Vault (~${liveLuloYields.standardVaultAPY} APY): ${formattedStandardVault} | US Stocks: ${stockSummaryStr}`;
+      const portfolioSummaryText = `Total Portfolio: ${formattedTotalPortfolio} | Solana Wallet: ${formattedWalletUsdc} (${formattedWalletSol}) | Shielded Savings Vault (~${liveLuloYields.shieldedVaultAPY} APY): ${formattedShieldedVault} | Standard Savings Vault (~${liveLuloYields.standardVaultAPY} APY): ${formattedStandardVault} | US Stocks (${formattedTotalStockPortfolio}): ${stockSummaryStr}`;
 
       return {
         content: [
@@ -295,6 +309,8 @@ export const userTools: MCPTool[] = [
                 walletAddress: walletAddress || "Solana wallet ready upon app login",
                 qrCodeUrl,
                 markdownQRCode: qrCodeUrl ? `![Wallet QR Code](${qrCodeUrl})` : undefined,
+                totalPortfolioValueUsd,
+                formattedTotalPortfolio,
                 walletBalances: {
                   usdcBalance: liveSolanaBalances.usdcBalance,
                   solBalance: liveSolanaBalances.solBalance,
@@ -317,7 +333,11 @@ export const userTools: MCPTool[] = [
                   },
                   totalSavingsUsdc,
                 },
-                stockHoldings: enrichedStockHoldings,
+                stockHoldings: {
+                  holdings: combinedStockHoldings,
+                  totalValueUsd: totalStockPortfolioUsd,
+                  formattedTotalValue: formattedTotalStockPortfolio,
+                },
                 availableInvestableStocksNote: "To search or list all investable US stocks supported on Corre (AAPL, TSLA, NVDA, GOOGL, AMZN, META, COIN, etc.), use the list_available_stocks or search_tokenized_stocks tool.",
                 recentTransactions: txRes.rows,
                 portfolioSummary: portfolioSummaryText,

@@ -1,5 +1,6 @@
 import { getBanks, resolveBankAccount, addBankAccount, getBankAccounts, createOfframpOrder, Currency, Chain } from "paj_ramp";
 import { pool } from "../../db.js";
+import { calculatePlatformFee } from "../../config/feeConfig.js";
 
 export async function getPajSessionToken(privyUserId: string, email?: string): Promise<string> {
     const result = await pool.query(
@@ -38,10 +39,16 @@ export async function fetchSavedBankAccounts(privyUserId: string): Promise<any[]
     return getBankAccounts(token);
 }
 
-export async function createOfframp(privyUserId: string, params: { bank: string; accountNumber: string; currency: any; amount: number; mint: string; chain: any; webhookURL: string; businessUSDCFee: number }, sessionToken?: string): Promise<any> {
+export async function createOfframp(privyUserId: string, params: { bank: string; accountNumber: string; currency: any; amount: number; mint: string; chain: any; webhookURL: string; fee?: number; businessUSDCFee?: number }, sessionToken?: string): Promise<any> {
     const token = sessionToken || await getPajSessionToken(privyUserId);
     try {
-        return await createOfframpOrder(params, token);
+        const feeAmount = params.fee ?? calculatePlatformFee(params.amount);
+        const { businessUSDCFee: _drop, ...cleanParams } = params as any;
+        const orderParams = {
+            ...cleanParams,
+            fee: feeAmount,
+        };
+        return await createOfframpOrder(orderParams as any, token);
     } catch (err: any) {
         const msg = err?.message || String(err);
         if (msg.includes("Session is invalid or expired") || msg.includes("Unauthorized")) {

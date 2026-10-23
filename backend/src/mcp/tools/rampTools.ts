@@ -6,6 +6,7 @@ import { fetchLiveNairaRate } from "../helpers/rates.js";
 import { lookupUserWallet, storePendingTransaction, validateInChatAmount, generateTransactionId } from "../../services/privyWalletService.js";
 import { fetchSupportedBanks, resolveBank, saveBank, fetchSavedBankAccounts, createOfframp } from "../helpers/pajSession.js";
 import { Currency, Chain } from "paj_ramp";
+import { calculatePlatformFee } from "../../config/feeConfig.js";
 
 const USDC_MINT = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
 export const rampTools: MCPTool[] = [
@@ -212,8 +213,8 @@ export const rampTools: MCPTool[] = [
       }
 
       const rate = await fetchLiveNairaRate("offRamp");
-      const PAJ_FEE_USDC = 0.5;
-      const estimatedNaira = Math.floor(Math.max(0, usdcAmount - PAJ_FEE_USDC) * rate);
+      const platformFee = calculatePlatformFee(usdcAmount);
+      const estimatedNaira = Math.floor(Math.max(0, usdcAmount - platformFee) * rate);
 
       if (bankId && accountNumber) {
         const webhookUrl = `${process.env.BACKEND_URL || process.env.APP_URL || 'http://localhost:3001'}/webhook/paj-ramp`;
@@ -248,7 +249,7 @@ export const rampTools: MCPTool[] = [
           mint: USDC_MINT,
           chain: Chain.SOLANA,
           webhookURL: webhookUrl,
-          businessUSDCFee: 0.5
+          fee: platformFee,
         });
 
         let canExecuteInChat = false;
@@ -286,7 +287,7 @@ export const rampTools: MCPTool[] = [
           accountNumber,
           bankName,
           accountName,
-          platformFee: "0.50 USDC",
+          platformFee: `${platformFee.toFixed(2)} USDC`,
           orderId: order.id,
           canExecuteInChat,
           transactionId,

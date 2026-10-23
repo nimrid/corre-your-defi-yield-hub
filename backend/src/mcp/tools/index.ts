@@ -4,6 +4,7 @@ import { stockTools } from "./stockTools.js";
 import { rampTools } from "./rampTools.js";
 import { savingsTools } from "./savingsTools.js";
 import { automationTools } from "./automationTools.js";
+import { payshTools } from "./payshTools.js";
 
 export const allTools: MCPTool[] = [
   ...userTools,
@@ -11,4 +12,5 @@ export const allTools: MCPTool[] = [
   ...rampTools,
   ...savingsTools,
   ...automationTools,
+  ...payshTools,
 ];

@@ -1,7 +1,12 @@
 import dotenv from "dotenv";
-import { Pool, PoolClient } from "pg";
+import { Pool, neonConfig } from "@neondatabase/serverless";
+import type { PoolClient } from "pg";
+import ws from "ws";
 
 dotenv.config();
+
+// Configure Neon to use WebSockets in Node.js (bypasses direct TCP 5432 timeouts)
+neonConfig.webSocketConstructor = ws;
 
 const connectionString = process.env.DATABASE_URL;
 
@@ -17,8 +22,6 @@ const MAX_CONNECTIONS = parseInt(process.env.DB_POOL_MAX ?? "20", 10);
 
 export const pool = new Pool({
   connectionString,
-  ssl: { rejectUnauthorized: true },
-
   max: MAX_CONNECTIONS,
 
   // Release idle connections before Neon's pooler cuts them (~5 s threshold)
@@ -26,10 +29,6 @@ export const pool = new Pool({
 
   // Allow up to 15 s for Neon to wake from autosuspend on a cold start
   connectionTimeoutMillis: 15_000,
-
-  // Keep TCP connections alive so the OS/network doesn't silently drop them
-  keepAlive: true,
-  keepAliveInitialDelayMillis: 10_000,
 });
 
 // Apply per-connection settings after the connection is established
@@ -40,7 +39,7 @@ pool.on("connect", (client: PoolClient) => {
   });
 });
 
-pool.on("error", (err) => {
+pool.on("error", (err: Error) => {
   // Log but do NOT crash — the pool will create a new connection on next use
   console.error("[pool] Idle client error (connection will be replaced):", err.message);
 });

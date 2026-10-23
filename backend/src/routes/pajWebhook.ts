@@ -84,13 +84,14 @@ router.post("/", async (req: Request, res: Response) => {
             await pool.query(
                 `INSERT INTO paj_onramp_orders
                  (id, account_number, account_name, bank, currency, amount_usdc, amount_fiat,
-                  mint, recipient, chain, rate, status, raw_payload, updated_at)
-                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, NOW())
+                  mint, recipient, chain, rate, fee, status, raw_payload, updated_at)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, NOW())
                  ON CONFLICT (id) DO UPDATE
                    SET status         = EXCLUDED.status,
                        amount_fiat    = COALESCE(EXCLUDED.amount_fiat,    paj_onramp_orders.amount_fiat),
                        amount_usdc    = COALESCE(EXCLUDED.amount_usdc,    paj_onramp_orders.amount_usdc),
                        rate           = COALESCE(EXCLUDED.rate,           paj_onramp_orders.rate),
+                       fee            = COALESCE(EXCLUDED.fee,            paj_onramp_orders.fee),
                        raw_payload    = EXCLUDED.raw_payload,
                        updated_at     = NOW()`,
                 [
@@ -105,6 +106,7 @@ router.post("/", async (req: Request, res: Response) => {
                     payload.recipient ?? "",
                     payload.chain ?? "SOLANA",
                     payload.rate ?? null,
+                    payload.fee ?? null,
                     status,
                     payload,
                 ],

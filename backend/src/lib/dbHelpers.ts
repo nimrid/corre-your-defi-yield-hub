@@ -25,11 +25,9 @@ export async function resolveUserId(
   if (cached !== undefined) return cached;
 
   // 2. Cache miss — query the DB
-  const executor = client ?? pool;
-  const { rows } = await executor.query(
-    "SELECT id FROM users WHERE privy_user_id = $1",
-    [privyUserId]
-  );
+  const { rows } = client
+    ? await client.query("SELECT id FROM users WHERE privy_user_id = $1", [privyUserId])
+    : await pool.query("SELECT id FROM users WHERE privy_user_id = $1", [privyUserId]);
 
   if (!rows.length) return null;
 

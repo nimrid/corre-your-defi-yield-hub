@@ -9,12 +9,13 @@ export const stockTools: MCPTool[] = [
   {
     definition: {
       name: "list_available_stocks",
-      description: "Search, lookup, browse, or list all available tokenized US stocks & equities supported on Corre (TSLA, AAPL, NVDA, GOOGL, AMZN, META, COIN, HOOD, SP500...)",
+      description: "Search, lookup, browse, or list all available US stocks & equities supported on Corre (TSLA, AAPL, NVDA, GOOGL, AMZN, META, COIN, HOOD, SP500...)",
       inputSchema: {
         type: "object",
         properties: {
           query: { type: "string", description: "Optional search query or company/ticker name (e.g. Tesla, Apple, NVDA, Tech)" },
         },
+        required: [],
       },
     },
     handler: async (args: Record<string, any>, context: MCPContext) => {
@@ -49,12 +50,13 @@ export const stockTools: MCPTool[] = [
   {
     definition: {
       name: "search_tokenized_stocks",
-      description: "Search, lookup, and query available tokenized US stocks, ticker symbols, and prices on Corre (e.g. search for Apple, Tesla, Nvidia, Tech stocks, etc.)",
+      description: "Search, lookup, and query available US stocks, ticker symbols, and prices on Corre (e.g. search for Apple, Tesla, Nvidia, Tech stocks, etc.)",
       inputSchema: {
         type: "object",
         properties: {
           query: { type: "string", description: "Search query or ticker symbol (e.g. Tesla, AAPL, Nvidia, Tech)" },
         },
+        required: [],
       },
     },
     handler: async (args: Record<string, any>, context: MCPContext) => {
@@ -89,7 +91,7 @@ export const stockTools: MCPTool[] = [
   {
     definition: {
       name: "get_stock_quote",
-      description: "Get real-time price quote for tokenized US stocks by ticker symbol (e.g. AAPL, TSLA, NVDA) or Solana mint address",
+      description: "Get real-time price quote for US stocks by ticker symbol (e.g. AAPL, TSLA, NVDA) or Solana mint address",
       inputSchema: {
         type: "object",
         properties: {
@@ -132,7 +134,7 @@ export const stockTools: MCPTool[] = [
             type: "text",
             text: JSON.stringify(
               {
-                stockName: stockConfig?.name || "Tokenized US Stock",
+                stockName: stockConfig?.name || "US Stock",
                 symbol: stockConfig?.symbol || symbolInput || "STOCK",
                 mint: stockMint,
                 usdcInput: usdcAmount,
@@ -149,13 +151,13 @@ export const stockTools: MCPTool[] = [
   {
     definition: {
       name: "prepare_buy_stock",
-      description: "Prepare a buy order for tokenized stock (TSLA, AAPL, NVDA...) and generate checkout link",
+      description: "Prepare a buy order for US stock (TSLA, AAPL, NVDA...) and generate checkout link",
       inputSchema: {
         type: "object",
         properties: {
           identifier: { type: "string", description: "User email address or Privy User ID" },
           symbol: { type: "string", description: "Stock Ticker e.g., AAPL, TSLA, NVDA, AMZN" },
-          stockMint: { type: "string", description: "Solana token mint address (optional if symbol provided)" },
+          stockMint: { type: "string", description: "Solana asset mint address (optional if symbol provided)" },
           usdcAmount: { type: "number", description: "USDC purchase amount" },
         },
         required: ["usdcAmount"],
@@ -228,13 +230,13 @@ export const stockTools: MCPTool[] = [
   {
     definition: {
       name: "prepare_sell_stock",
-      description: "Prepare a sell order for tokenized stock shares back to USDC",
+      description: "Prepare a sell order for stock shares back to USDC",
       inputSchema: {
         type: "object",
         properties: {
           identifier: { type: "string", description: "User email address or Privy User ID" },
           symbol: { type: "string", description: "Stock Ticker e.g., AAPL, TSLA, NVDA" },
-          stockMint: { type: "string", description: "Solana token mint address (optional if symbol provided)" },
+          stockMint: { type: "string", description: "Solana asset mint address (optional if symbol provided)" },
           sharesAmount: { type: "number", description: "Number of shares to sell" },
         },
         required: ["sharesAmount"],
@@ -307,13 +309,14 @@ export const stockTools: MCPTool[] = [
   {
     definition: {
       name: "get_stock_market_trends",
-      description: "Get real-time market trends, top gaining tokenized US stocks, 24h performance, and volume leaders available on Corre (e.g. TSLA, AAPL, NVDA, GOOGL, AMZN, META, COIN, HOOD, SP500...)",
+      description: "Get real-time market trends, top gaining US stocks, 24h performance, and volume leaders available on Corre (e.g. TSLA, AAPL, NVDA, GOOGL, AMZN, META, COIN, HOOD, SP500...)",
       inputSchema: {
         type: "object",
         properties: {
           category: { type: "string", enum: ["all", "top_gainers", "tech", "popular"], description: "Category filter (default: all)" },
           limit: { type: "number", description: "Number of stocks to return (default: 10)" },
         },
+        required: [],
       },
     },
     handler: async (args: Record<string, any>, context: MCPContext) => {

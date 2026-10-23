@@ -41,6 +41,9 @@ const BuyUSDCNaira = () => {
     const [creatingOrder, setCreatingOrder] = useState(false);
     const [order, setOrder] = useState<OnrampOrder | null>(null);
     const [orderError, setOrderError] = useState("");
+    // Store calculated values at order-creation time for the success screen
+    const [orderPlatformFee, setOrderPlatformFee] = useState<number>(0);
+    const [orderNetUSDC, setOrderNetUSDC] = useState<number>(0);
 
     useEffect(() => {
         const fetchBaseRate = async () => {
@@ -126,6 +129,7 @@ const BuyUSDCNaira = () => {
 
             const grossUSDC = baseRate ? numAmount / baseRate : 0;
             const fee = calculatePlatformFee(grossUSDC);
+            const netUSDC = Math.max(0, grossUSDC - fee);
 
             const newOrder = await createOnrampOrder(
                 {
@@ -140,6 +144,14 @@ const BuyUSDCNaira = () => {
                 token
             );
             console.log("Order created:", newOrder);
+            // Persist local calculations for the success screen
+            setOrderPlatformFee(fee);
+            setOrderNetUSDC(
+                // Prefer the API-returned amount minus fee; fall back to local calc
+                newOrder?.amount && newOrder.amount > 0
+                    ? Math.max(0, newOrder.amount - fee)
+                    : netUSDC
+            );
             setOrder(newOrder);
         } catch (err: any) {
             console.error("Order creation failed:", err);
@@ -261,7 +273,39 @@ const BuyUSDCNaira = () => {
                                 </p>
                             </div>
 
+                            {/* Receipt-style breakdown */}
+                            <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/10 p-4 space-y-3 text-left">
+                                <p className="text-sm text-emerald-600 dark:text-emerald-400 font-medium">✅ Order successful — transfer details below</p>
+                                <div className="grid grid-cols-2 gap-2 text-xs text-muted-foreground">
+                                    <div>
+                                        <p className="font-medium text-foreground">₦{order.fiatAmount.toLocaleString()}</p>
+                                        <p>You send</p>
+                                    </div>
+                                    <div>
+                                        <p className="font-bold text-primary text-sm">
+                                            ~{orderNetUSDC.toFixed(2)} USDC
+                                        </p>
+                                        <p>You receive</p>
+                                    </div>
+                                    {baseRate && (
+                                        <div>
+                                            <p className="font-medium text-foreground">₦{baseRate.toLocaleString()}</p>
+                                            <p>Rate per USDC</p>
+                                        </div>
+                                    )}
+                                    <div>
+                                        <p className="font-medium text-foreground">{orderPlatformFee.toFixed(2)} USDC</p>
+                                        <p>Fee</p>
+                                    </div>
+                                </div>
+                                {order.id && (
+                                    <p className="text-xs text-muted-foreground font-mono">Order ID: {order.id}</p>
+                                )}
+                            </div>
+
+                            {/* Bank transfer details */}
                             <div className="bg-secondary/30 border border-border/60 rounded-xl p-5 space-y-4 text-left">
+                                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Transfer To</p>
                                 <div>
                                     <p className="text-xs text-muted-foreground mb-1">Bank Name</p>
                                     <p className="font-semibold">{order.bank}</p>
@@ -282,14 +326,10 @@ const BuyUSDCNaira = () => {
                                         </button>
                                     </div>
                                 </div>
-                                <div className="border-t border-border/40 pt-3 flex justify-between items-center text-xs">
-                                    <span className="text-muted-foreground">Platform Fee</span>
-                                    <span className="font-medium">{(order.fee ?? 0.5)} USDC</span>
-                                </div>
                             </div>
 
                             <div className="bg-primary/5 rounded-lg p-3 text-xs text-muted-foreground text-left">
-                                <p><strong>Note:</strong> You will receive ~{order.amount} USDC at {order.recipient} once the transfer is confirmed.</p>
+                                <p><strong>Note:</strong> You will receive ~<strong>{orderNetUSDC.toFixed(2)} USDC</strong> at <span className="font-mono break-all">{order.recipient}</span> once the transfer is confirmed.</p>
                             </div>
 
                             <Button

@@ -70,7 +70,7 @@ export const automationTools: MCPTool[] = [
   {
     definition: {
       name: "create_stock_limit_order",
-      description: "Create an automated limit order to buy or sell a tokenized US stock when its price hits a target (e.g. 'Buy $50 of NVDA when price drops to $115').",
+      description: "Create an automated limit order to buy or sell a US stock or equity when its price hits a target (e.g. 'Buy $50 of NVDA when price drops to $115').",
       inputSchema: {
         type: "object",
         properties: {
@@ -137,7 +137,7 @@ export const automationTools: MCPTool[] = [
   {
     definition: {
       name: "create_stock_dca_schedule",
-      description: "Create an automated Dollar-Cost Averaging (DCA) recurring purchase schedule for tokenized US stocks on Corre (e.g. 'Buy $25 of AAPL weekly').",
+      description: "Create an automated Dollar-Cost Averaging (DCA) recurring purchase schedule for US stocks on Corre (e.g. 'Buy $25 of AAPL weekly').",
       inputSchema: {
         type: "object",
         properties: {
