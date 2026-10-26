@@ -19,10 +19,11 @@ export interface TransactionHistoryData {
 export function useTransactionHistory(
   userId: string | undefined,
   primarySolanaAddress: string | undefined,
-  sessionToken: string | null
+  sessionToken: string | null,
+  primaryArcAddress?: string | undefined
 ) {
   return useQuery<TransactionHistoryData>({
-    queryKey: ["transactionHistory", userId, primarySolanaAddress, sessionToken],
+    queryKey: ["transactionHistory", userId, primarySolanaAddress, primaryArcAddress, sessionToken],
     enabled: !!userId, // Only run query when userId is available
     staleTime: 5 * 60 * 1000, // Consider data fresh for 5 minutes
     gcTime: 30 * 60 * 1000, // Keep in cache for 30 minutes
@@ -46,25 +47,51 @@ export function useTransactionHistory(
           const data = await res.json();
           const dbTransactions: TransactionRow[] = Array.isArray(data) ? data : [];
 
-          // Fetch on-chain USDC transfer history via Helius if Solana address is present
-          let onchainTransactions: TransactionRow[] = [];
+          // Fetch on-chain USDC transfer history for Solana and Arc concurrently
+          const onchainPromises: Promise<TransactionRow[]>[] = [];
+
           if (primarySolanaAddress) {
-            try {
-              const onchainRes = await apiFetch(`/transactions/onchain/${primarySolanaAddress}`);
-              if (onchainRes.ok) {
-                const onchainData = await onchainRes.json();
-                onchainTransactions = Array.isArray(onchainData) ? onchainData : [];
-              }
-            } catch (err) {
-              console.warn("Failed to fetch on-chain transactions:", err);
-            }
+            onchainPromises.push(
+              (async () => {
+                try {
+                  const onchainRes = await apiFetch(`/transactions/onchain/${primarySolanaAddress}`);
+                  if (onchainRes.ok) {
+                    const onchainData = await onchainRes.json();
+                    return Array.isArray(onchainData) ? onchainData : [];
+                  }
+                } catch (err) {
+                  console.warn("Failed to fetch Solana on-chain transactions:", err);
+                }
+                return [];
+              })()
+            );
           }
 
+          if (primaryArcAddress) {
+            onchainPromises.push(
+              (async () => {
+                try {
+                  const onchainRes = await apiFetch(`/transactions/onchain/${primaryArcAddress}`);
+                  if (onchainRes.ok) {
+                    const onchainData = await onchainRes.json();
+                    return Array.isArray(onchainData) ? onchainData : [];
+                  }
+                } catch (err) {
+                  console.warn("Failed to fetch Arc on-chain transactions:", err);
+                }
+                return [];
+              })()
+            );
+          }
+
+          const onchainResults = await Promise.all(onchainPromises);
+          const onchainTransactions: TransactionRow[] = onchainResults.flat();
+
           const dbSignatures = new Set(
-            dbTransactions.map((tx) => tx.txSignature).filter(Boolean)
+            dbTransactions.map((tx) => tx.txSignature?.toLowerCase()).filter(Boolean)
           );
           const uniqueOnchain = onchainTransactions.filter(
-            (tx) => !tx.txSignature || !dbSignatures.has(tx.txSignature)
+            (tx) => !tx.txSignature || !dbSignatures.has(tx.txSignature.toLowerCase())
           );
 
           return [...dbTransactions, ...uniqueOnchain];
@@ -126,7 +153,7 @@ export function useTransactionHistory(
       })();
 
       const [
-        transactions,
+        rawTransactions,
         savingsActivity,
         stockHistory,
         privateMarketHistory,
@@ -138,6 +165,14 @@ export function useTransactionHistory(
         privateMarketPromise,
         fiatPromise,
       ]);
+
+      // Deduplicate DB onramp/offramp records if already present in fiatTransactions
+      const fiatIds = new Set(
+        fiatTransactions.map((ft) => (ft.id || "").toLowerCase()).filter(Boolean)
+      );
+      const transactions = rawTransactions.filter(
+        (tx) => !tx.txSignature || !fiatIds.has(tx.txSignature.toLowerCase())
+      );
 
       return {
         transactions,

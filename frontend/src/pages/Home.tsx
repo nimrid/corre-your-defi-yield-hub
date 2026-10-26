@@ -1,5 +1,6 @@
 import Navigation from "@/components/Navigation";
-import { usePrivy, useWallets } from "@privy-io/react-auth";
+import { usePrivy, useWallets as useEvmWallets } from "@privy-io/react-auth";
+import { useWallets as useSolanaWallets } from "@privy-io/react-auth/solana";
 import { useEffect, useRef, useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { Copy, ChevronDown, QrCode, Plus, Wallet, ExternalLink, ShieldCheck, RefreshCw } from "lucide-react";
@@ -53,18 +54,20 @@ interface StockHolding {
 
 const Home = () => {
   const { ready, authenticated, user } = usePrivy();
-  const { wallets, ready: walletsReady } = useWallets();
+  const { wallets: evmWallets, ready: evmWalletsReady } = useEvmWallets();
+  const { wallets: solanaWalletsList, ready: solanaWalletsReady } = useSolanaWallets();
+  const walletsReady = evmWalletsReady && solanaWalletsReady;
+  const wallets = [...evmWallets, ...solanaWalletsList];
+
   const navigate = useNavigate();
   const hasSyncedRef = useRef(false);
+  const [activeNetwork, setActiveNetwork] = useState<"solana" | "arc">("solana");
   const [stocksOpen, setStocksOpen] = useState(false);
   const [stockBalances, setStockBalances] = useState<StockHolding[] | null>(null);
   const [stocksLoading, setStocksLoading] = useState(false);
   const [stocksError, setStocksError] = useState<string | null>(null);
 
   const { sessionToken } = usePajSession();
-
-  const solanaWallets = wallets.filter((w) => w.walletClientType === "solana");
-  const ethereumWallets = wallets.filter((w) => w.walletClientType === "ethereum");
 
   const linkedWallets = (user?.linkedAccounts ?? []).filter(
     (a: any) => a.type === "wallet" || a.type === "smart_wallet"
@@ -74,19 +77,59 @@ const Home = () => {
     (a: any) => a.chainType === "solana" || a.chain === "solana"
   );
   const linkedEthereum = linkedWallets.filter(
-    (a: any) => a.chainType === "ethereum" || a.chain === "ethereum"
+    (a: any) =>
+      a.chainType === "ethereum" ||
+      a.chain === "ethereum" ||
+      (typeof a.address === "string" && a.address.startsWith("0x"))
   );
+
+  const solanaWallets = solanaWalletsList.length
+    ? solanaWalletsList
+    : (evmWallets as any[]).filter((w) => w.walletClientType === "solana");
 
   const primarySolanaAddress: string | undefined =
     (solanaWallets[0] as any)?.address ??
-    (linkedSolana[0] as any)?.address;
+    (linkedSolana[0] as any)?.address ??
+    (!user?.wallet?.address?.startsWith("0x") ? user?.wallet?.address : undefined);
+
+  const arcWallets = (evmWallets as any[]).filter(
+    (w) =>
+      w.type === "ethereum" ||
+      w.walletClientType === "ethereum" ||
+      w.walletClientType === "privy" ||
+      (typeof w.address === "string" && w.address.startsWith("0x"))
+  );
+
+  const primaryArcAddress: string | undefined =
+    (arcWallets[0] as any)?.address ??
+    (linkedEthereum[0] as any)?.address ??
+    (user?.wallet?.address?.startsWith("0x") ? user.wallet.address : undefined);
+
+  const effectiveArcWallets = arcWallets.length
+    ? arcWallets
+    : primaryArcAddress
+    ? [{ address: primaryArcAddress, walletClientType: "Embedded" }]
+    : [];
+
+  const solanaCount =
+    solanaWallets.length +
+    linkedSolana.filter(
+      (a: any) => !solanaWallets.some((w: any) => w.address && w.address === a.address)
+    ).length;
+
+  const arcCount =
+    effectiveArcWallets.length +
+    linkedEthereum.filter(
+      (a: any) =>
+        !effectiveArcWallets.some((w: any) => w.address && w.address === a.address)
+    ).length;
 
   // React Query cached transaction history
   const {
     data: txHistoryData,
     isLoading: txHistoryLoading,
     error: txHistoryError,
-  } = useTransactionHistory(user?.id, primarySolanaAddress, sessionToken);
+  } = useTransactionHistory(user?.id, primarySolanaAddress, sessionToken, primaryArcAddress);
 
   const transactions = txHistoryData?.transactions ?? [];
   const savingsActivity = txHistoryData?.savingsActivity ?? [];
@@ -354,17 +397,75 @@ const Home = () => {
               </div>
 
               <div className="p-8 bg-secondary/10 border-t border-border/40">
-                <div className="flex items-center justify-between mb-6">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6">
                   <div className="flex items-center gap-2">
                     <Wallet className="w-5 h-5 text-primary" />
-                    <h3 className="text-lg font-semibold">Your Solana Wallets</h3>
+                    <h3 className="text-lg font-semibold">Your Wallets</h3>
+                    {!walletsReady && (
+                      <span className="flex items-center gap-2 text-xs text-muted-foreground ml-2">
+                        <div className="w-2 h-2 rounded-full bg-primary animate-pulse" />
+                        Syncing...
+                      </span>
+                    )}
                   </div>
-                  {!walletsReady && (
-                    <span className="flex items-center gap-2 text-xs text-muted-foreground">
-                      <div className="w-2 h-2 rounded-full bg-primary animate-pulse" />
-                      Syncing...
-                    </span>
-                  )}
+
+                  {/* Network Toggle Pills: Solana & Arc */}
+                  <div className="inline-flex self-start sm:self-auto p-1 rounded-xl bg-background/70 border border-border/50 backdrop-blur-sm">
+                    <button
+                      type="button"
+                      onClick={() => setActiveNetwork("solana")}
+                      className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg transition-all ${
+                        activeNetwork === "solana"
+                          ? "bg-primary text-primary-foreground shadow-sm"
+                          : "text-muted-foreground hover:text-foreground hover:bg-secondary/40"
+                      }`}
+                    >
+                      <span
+                        className={`w-1.5 h-1.5 rounded-full ${
+                          activeNetwork === "solana" ? "bg-white" : "bg-purple-400"
+                        }`}
+                      />
+                      Solana
+                      {solanaCount > 0 && (
+                        <span
+                          className={`text-[10px] px-1.5 py-0.5 rounded-full font-mono ${
+                            activeNetwork === "solana"
+                              ? "bg-white/20 text-white"
+                              : "bg-secondary text-muted-foreground"
+                          }`}
+                        >
+                          {solanaCount}
+                        </span>
+                      )}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setActiveNetwork("arc")}
+                      className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg transition-all ${
+                        activeNetwork === "arc"
+                          ? "bg-primary text-primary-foreground shadow-sm"
+                          : "text-muted-foreground hover:text-foreground hover:bg-secondary/40"
+                      }`}
+                    >
+                      <span
+                        className={`w-1.5 h-1.5 rounded-full ${
+                          activeNetwork === "arc" ? "bg-white" : "bg-emerald-400"
+                        }`}
+                      />
+                      Arc
+                      {arcCount > 0 && (
+                        <span
+                          className={`text-[10px] px-1.5 py-0.5 rounded-full font-mono ${
+                            activeNetwork === "arc"
+                              ? "bg-white/20 text-white"
+                              : "bg-secondary text-muted-foreground"
+                          }`}
+                        >
+                          {arcCount}
+                        </span>
+                      )}
+                    </button>
+                  </div>
                 </div>
 
                 <div className="space-y-3">
@@ -374,7 +475,7 @@ const Home = () => {
                         <div key={i} className="h-16 rounded-2xl bg-secondary/30 animate-pulse" />
                       ))}
                     </div>
-                  ) : (
+                  ) : activeNetwork === "solana" ? (
                     <>
                       {solanaWallets.length || linkedSolana.length ? (
                         <div className="grid grid-cols-1 gap-3">
@@ -382,25 +483,71 @@ const Home = () => {
                             <WalletRow
                               key={(wallet as any).id ?? wallet.address ?? Math.random()}
                               wallet={wallet}
+                              chainLabel="Solana"
+                              chain="solana"
                             />
                           ))}
                           {linkedSolana
                             .filter(
                               (a: any) =>
                                 !solanaWallets.some(
-                                  (w) => w.address && w.address === a.address
+                                  (w: any) => w.address && w.address === a.address
                                 )
                             )
                             .map((a: any, idx: number) => (
                               <LinkedWalletRow
                                 key={`linked-sol-${idx}-${a.address}`}
                                 account={a}
+                                chainLabel="Solana"
+                                chain="solana"
                               />
                             ))}
                         </div>
                       ) : (
                         <div className="text-center py-6 rounded-2xl bg-secondary/20 border border-dashed border-border/60">
                           <p className="text-sm text-muted-foreground">No Solana wallets connected</p>
+                          <Button 
+                            variant="link" 
+                            size="sm" 
+                            className="mt-2 text-primary"
+                            onClick={() => navigate('/settings')}
+                          >
+                            Add a wallet
+                          </Button>
+                        </div>
+                      )}
+                    </>
+                  ) : (
+                    <>
+                      {effectiveArcWallets.length || linkedEthereum.length ? (
+                        <div className="grid grid-cols-1 gap-3">
+                          {effectiveArcWallets.map((wallet) => (
+                            <WalletRow
+                              key={(wallet as any).id ?? (wallet as any).address ?? Math.random()}
+                              wallet={wallet}
+                              chainLabel="Arc"
+                              chain="arc"
+                            />
+                          ))}
+                          {linkedEthereum
+                            .filter(
+                              (a: any) =>
+                                !effectiveArcWallets.some(
+                                  (w: any) => w.address && w.address === a.address
+                                )
+                            )
+                            .map((a: any, idx: number) => (
+                              <LinkedWalletRow
+                                key={`linked-arc-${idx}-${a.address}`}
+                                account={a}
+                                chainLabel="Arc"
+                                chain="arc"
+                              />
+                            ))}
+                        </div>
+                      ) : (
+                        <div className="text-center py-6 rounded-2xl bg-secondary/20 border border-dashed border-border/60">
+                          <p className="text-sm text-muted-foreground">No Arc wallets connected</p>
                           <Button 
                             variant="link" 
                             size="sm" 

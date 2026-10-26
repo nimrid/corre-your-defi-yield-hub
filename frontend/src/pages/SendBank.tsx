@@ -42,6 +42,9 @@ const SendBank = () => {
               >
                 <BanknoteIcon className="w-4 h-4" />
                 Nigeria bank off-ramp
+                <span className="text-[10px] ml-1 px-1.5 py-0.5 rounded-full bg-primary/20 text-primary-foreground font-normal">
+                  Solana & Arc
+                </span>
               </Button>
 
               <Button

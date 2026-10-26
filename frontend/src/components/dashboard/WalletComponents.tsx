@@ -45,7 +45,15 @@ export const WalletQRDialog = ({ address, label }: { address: string; label: str
   );
 };
 
-export const WalletRow = ({ wallet }: { wallet: any }) => {
+export const WalletRow = ({
+  wallet,
+  chainLabel = "Solana",
+  chain,
+}: {
+  wallet: any;
+  chainLabel?: string;
+  chain?: "solana" | "arc";
+}) => {
   const { toast } = useToast();
   const [resolvedAddress, setResolvedAddress] = useState<string | undefined>(wallet.address);
 
@@ -60,10 +68,14 @@ export const WalletRow = ({ wallet }: { wallet: any }) => {
             return;
           }
         }
-      } catch { }
+      } catch {
+        // Ignore resolution error
+      }
       try {
         if (mounted && wallet.address) setResolvedAddress(wallet.address);
-      } catch { }
+      } catch {
+        // Fallback error
+      }
     };
     resolve();
     return () => { mounted = false; };
@@ -84,11 +96,16 @@ export const WalletRow = ({ wallet }: { wallet: any }) => {
     }).catch(() => { });
   };
 
+  const clientType =
+    wallet.walletClientType === "privy"
+      ? "Embedded"
+      : wallet.walletClientType || "Embedded";
+
   return (
     <div className="flex justify-between items-center p-5 rounded-2xl bg-background/40 hover:bg-background/60 border border-primary/5 hover:border-primary/20 transition-all duration-200 group shadow-sm">
       <div className="flex-1">
         <p className="text-[10px] font-bold uppercase tracking-widest text-primary mb-1 opacity-70 group-hover:opacity-100 transition-opacity">
-          {wallet.walletClientType} · Solana
+          {clientType} · {chainLabel}
         </p>
         <div className="flex items-center gap-2">
           <p className="font-mono text-sm font-medium truncate max-w-[200px]">
@@ -104,19 +121,31 @@ export const WalletRow = ({ wallet }: { wallet: any }) => {
               >
                 <Copy className="w-3.5 h-3.5" />
               </button>
-              <WalletQRDialog address={resolvedAddress} label={wallet.walletClientType} />
+              <WalletQRDialog address={resolvedAddress} label={`${chainLabel} (${clientType})`} />
             </div>
           )}
         </div>
       </div>
       <div className="text-right text-primary">
-        <Balance wallet={wallet} address={resolvedAddress} />
+        <Balance
+          wallet={wallet}
+          address={resolvedAddress}
+          chain={chain || (chainLabel.toLowerCase() === "arc" ? "arc" : "solana")}
+        />
       </div>
     </div>
   );
 };
 
-export const LinkedWalletRow = ({ account }: { account: any }) => {
+export const LinkedWalletRow = ({
+  account,
+  chainLabel,
+  chain,
+}: {
+  account: any;
+  chainLabel?: string;
+  chain?: "solana" | "arc";
+}) => {
   const { toast } = useToast();
   const address = account.address as string | undefined;
 
@@ -139,7 +168,7 @@ export const LinkedWalletRow = ({ account }: { account: any }) => {
     <div className="flex justify-between items-center p-5 rounded-2xl bg-background/40 hover:bg-background/60 border border-border/40 hover:border-primary/20 transition-all duration-200 group shadow-sm">
       <div className="flex-1">
         <p className="text-[10px] font-bold uppercase tracking-widest text-primary mb-1 opacity-70 group-hover:opacity-100 transition-opacity">
-          Linked · {account.chainType ?? account.chain ?? "Solana"}
+          Linked · {chainLabel ?? account.chainType ?? account.chain ?? "Solana"}
         </p>
         <div className="flex items-center gap-2">
           <p className="font-mono text-sm font-medium">
@@ -155,10 +184,17 @@ export const LinkedWalletRow = ({ account }: { account: any }) => {
               >
                 <Copy className="w-3.5 h-3.5" />
               </button>
-              <WalletQRDialog address={address} label="Linked Wallet" />
+              <WalletQRDialog address={address} label={`${chainLabel ?? "Linked"} Wallet`} />
             </div>
           )}
         </div>
+      </div>
+      <div className="text-right text-primary">
+        <Balance
+          wallet={account}
+          address={address}
+          chain={chain || (chainLabel?.toLowerCase() === "arc" ? "arc" : "solana")}
+        />
       </div>
     </div>
   );

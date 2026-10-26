@@ -41,7 +41,7 @@ const Send = () => {
               <div>
                 <h2 className="text-xl font-bold mb-1 group-hover:text-primary transition-colors">Send to wallet</h2>
                 <p className="text-xs text-muted-foreground leading-relaxed">
-                  Transfer SOL or USDC to another crypto wallet address.
+                  Transfer USDC or SOL across Solana and Arc networks.
                 </p>
               </div>
             </div>

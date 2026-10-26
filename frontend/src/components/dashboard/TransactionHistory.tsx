@@ -1,7 +1,8 @@
 import { PajTransaction } from "paj_ramp";
+import { ExternalLink } from "lucide-react";
 
 export interface TransactionRow {
-  id: number;
+  id: number | string;
   chainType: string;
   assetSymbol: string;
   amount: string;
@@ -47,6 +48,22 @@ const formatVaultLabel = (value: string): string => {
     return "Shielded savings vault";
   }
   return value;
+};
+
+const shortenAddress = (addr: string): string => {
+  if (!addr) return "";
+  if (addr.length <= 16) return addr;
+  return `${addr.slice(0, 6)}...${addr.slice(-4)}`;
+};
+
+const getExplorerUrl = (txSignature: string | null | undefined, chainType?: string): string | null => {
+  if (!txSignature) return null;
+  if (txSignature.startsWith("ord_") || txSignature.length < 20) return null;
+  const isArc = chainType?.toLowerCase() === "arc" || txSignature.startsWith("0x");
+  if (isArc) {
+    return `https://explorer.arc.io/tx/${txSignature}`;
+  }
+  return `https://solscan.io/tx/${txSignature}`;
 };
 
 const formatAmount = (val: string | number | undefined | null): string => {
@@ -140,23 +157,77 @@ export const TransactionHistory = ({
 
               if (item.type === "transfer") {
                 const tx = item as TransactionRow;
+                const isOfframp = tx.source === "offramp";
+                const isOnramp = tx.source === "onramp";
+                const isArc = tx.chainType?.toLowerCase() === "arc";
+                const explorerUrl = getExplorerUrl(tx.txSignature, tx.chainType);
+
+                let actionLabel = tx.direction === "incoming" ? "Received" : "Sent";
+                if (isOfframp) actionLabel = "Bank Off-Ramp";
+                if (isOnramp) actionLabel = "Fiat On-Ramp";
+
                 return (
                   <div key={`tx-${tx.id}-${idx}`} className="flex flex-col sm:flex-row sm:items-center sm:justify-between p-4 rounded-xl bg-secondary/30 text-sm border border-border/40 hover:border-primary/30 transition-all duration-200">
-                    <div className="space-y-1">
-                      <div className="flex items-center gap-2">
-                        <span className={tx.direction === "incoming" ? "text-emerald-500 font-bold" : "text-red-500 font-bold"}>
-                          {tx.direction === "incoming" ? "Received" : "Sent"}
+                    <div className="space-y-1.5">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className={
+                          isOfframp
+                            ? "text-amber-500 font-bold"
+                            : tx.direction === "incoming"
+                            ? "text-emerald-500 font-bold"
+                            : "text-rose-500 font-bold"
+                        }>
+                          {actionLabel}
                         </span>
                         <span className="font-mono text-base font-medium">{formatAmount(tx.amount)} {tx.assetSymbol}</span>
+                        {isArc ? (
+                          <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-cyan-500/15 text-cyan-300 border border-cyan-500/30">
+                            Arc
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-purple-500/15 text-purple-300 border border-purple-500/30">
+                            Solana
+                          </span>
+                        )}
                       </div>
-                      <div className="text-xs text-muted-foreground opacity-80">
-                        <div><span className="font-medium text-foreground/70">From:</span> {formatVaultLabel(tx.fromAddress)}</div>
-                        <div><span className="font-medium text-foreground/70">To:</span> {formatVaultLabel(tx.toAddress)}</div>
+                      <div className="text-xs text-muted-foreground opacity-80 space-y-0.5">
+                        <div>
+                          <span className="font-medium text-foreground/70">From:</span>{" "}
+                          <span className="font-mono">
+                            {formatVaultLabel(tx.fromAddress).startsWith("0x") || formatVaultLabel(tx.fromAddress).length > 20
+                              ? shortenAddress(formatVaultLabel(tx.fromAddress))
+                              : formatVaultLabel(tx.fromAddress)}
+                          </span>
+                        </div>
+                        <div>
+                          <span className="font-medium text-foreground/70">To:</span>{" "}
+                          <span className="font-mono">
+                            {formatVaultLabel(tx.toAddress).startsWith("0x") || formatVaultLabel(tx.toAddress).length > 20
+                              ? shortenAddress(formatVaultLabel(tx.toAddress))
+                              : formatVaultLabel(tx.toAddress)}
+                          </span>
+                        </div>
                       </div>
                     </div>
                     <div className="mt-2 sm:mt-0 sm:text-right text-xs text-muted-foreground space-y-1">
                       <div className="font-semibold text-foreground/90">{itemDate}</div>
-                      <div className="uppercase tracking-widest text-[10px] font-bold opacity-60">{tx.source === "offramp" ? "Bank Transfer" : tx.source === "onchain" ? "On-chain Transfer" : `${tx.chainType} Transfer`}</div>
+                      <div className="flex items-center sm:justify-end gap-1.5 flex-wrap">
+                        <span className="uppercase tracking-widest text-[10px] font-bold opacity-60">
+                          {isOfframp ? "Bank Withdrawal" : isOnramp ? "Fiat Deposit" : tx.source === "onchain" ? "On-chain Transfer" : `${isArc ? "Arc" : "Solana"} Transfer`}
+                        </span>
+                        {explorerUrl && (
+                          <a
+                            href={explorerUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-0.5 text-[10px] text-primary/80 hover:text-primary transition-colors underline"
+                            title="View on Explorer"
+                          >
+                            <span>View</span>
+                            <ExternalLink className="w-2.5 h-2.5" />
+                          </a>
+                        )}
+                      </div>
                     </div>
                   </div>
                 );
@@ -183,24 +254,64 @@ export const TransactionHistory = ({
               } else if (item.type === "fiat") {
                 const ft = item as PajTransaction;
                 const isBuy = ft.transactionType === "ON_RAMP";
+                const ftChain = (ft as any).chain ? String((ft as any).chain).toUpperCase() : "";
+                const ftMint = (ft as any).mint ? String((ft as any).mint).toLowerCase() : "";
+                const isArc = ftChain === "ARC" || ftMint === "0x3600000000000000000000000000000000000000";
+                const txHash = (ft as any).signature || (ft as any).txHash || (ft as any).transactionHash;
+                const explorerUrl = txHash ? getExplorerUrl(txHash, isArc ? "arc" : "solana") : null;
+
                 return (
                   <div key={`ft-${ft.id}-${idx}`} className="flex flex-col sm:flex-row sm:items-center sm:justify-between p-4 rounded-xl bg-orange-500/5 text-sm border border-orange-500/20 hover:border-orange-500/40 transition-all duration-200">
-                    <div className="space-y-1">
-                      <div className="flex items-center gap-2">
-                        <span className={isBuy ? "text-emerald-500 font-bold" : "text-orange-500 font-bold"}>
+                    <div className="space-y-1.5">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className={isBuy ? "text-emerald-500 font-bold" : "text-amber-500 font-bold"}>
                           {isBuy ? "Bought USDC (Fiat)" : "Sold USDC (Fiat)"}
                         </span>
                         <span className="font-mono text-base font-medium">{formatAmount(ft.usdcAmount ?? ft.amount)} USDC</span>
+                        {isArc ? (
+                          <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-cyan-500/15 text-cyan-300 border border-cyan-500/30">
+                            Arc
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-purple-500/15 text-purple-300 border border-purple-500/30">
+                            Solana
+                          </span>
+                        )}
                       </div>
-                      <div className="text-xs text-muted-foreground opacity-80">
+                      <div className="text-xs text-muted-foreground opacity-80 space-y-0.5">
                         <div><span className="font-medium text-foreground/70">Fiat Amount:</span> {(ft as any).currency ? `${(ft as any).currency} ` : "₦"}{formatAmount(ft.fiatAmount ?? ft.amount)}</div>
                         {(ft as any).rate && <div><span className="font-medium text-foreground/70">Rate:</span> {formatAmount((ft as any).rate)} {(ft as any).currency || "NGN"}/USDC</div>}
-                        <div><span className="font-medium text-foreground/70">Status:</span> {ft.status}</div>
+                        <div>
+                          <span className="font-medium text-foreground/70">Status:</span>{" "}
+                          <span className={
+                            ft.status === "COMPLETED" || ft.status === "SUCCESSFUL"
+                              ? "text-emerald-400 font-medium"
+                              : ft.status === "PENDING" || ft.status === "INIT"
+                              ? "text-amber-400 font-medium"
+                              : "text-muted-foreground"
+                          }>
+                            {ft.status}
+                          </span>
+                        </div>
                       </div>
                     </div>
                     <div className="mt-2 sm:mt-0 sm:text-right text-xs text-muted-foreground space-y-1">
                       <div className="font-semibold text-foreground/90">{itemDate}</div>
-                      <div className="uppercase tracking-widest text-[10px] font-bold opacity-60">Fiat {isBuy ? "Deposit" : "Withdrawal"}</div>
+                      <div className="flex items-center sm:justify-end gap-1.5 flex-wrap">
+                        <div className="uppercase tracking-widest text-[10px] font-bold opacity-60">Fiat {isBuy ? "Deposit" : "Withdrawal"}</div>
+                        {explorerUrl && (
+                          <a
+                            href={explorerUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-0.5 text-[10px] text-primary/80 hover:text-primary transition-colors underline"
+                            title="View on Explorer"
+                          >
+                            <span>View</span>
+                            <ExternalLink className="w-2.5 h-2.5" />
+                          </a>
+                        )}
+                      </div>
                     </div>
                   </div>
                 );

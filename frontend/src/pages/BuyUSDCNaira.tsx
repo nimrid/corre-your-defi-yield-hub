@@ -1,19 +1,27 @@
 import Navigation from "@/components/Navigation";
 import { ArrowLeft, Wallet, Loader2, ArrowRight, Share, CheckCircle2 } from "lucide-react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { useState, useEffect } from "react";
 import { getRateByType, RateType, createOnrampOrder, Currency, Chain, OnrampOrder } from 'paj_ramp';
-import { usePrivy, useWallets } from "@privy-io/react-auth";
-import { webhookUrl } from "@/services/apiClient";
+import { usePrivy, useWallets as useEvmWallets } from "@privy-io/react-auth";
+import { useWallets as useSolanaWallets } from "@privy-io/react-auth/solana";
+import { webhookUrl, apiFetch } from "@/services/apiClient";
 import { usePajSession } from "@/hooks/usePajSession";
 import { PajSessionModal } from "@/components/PajSessionModal";
 import { calculatePlatformFee, MARKUP_PERCENT, MIN_PLATFORM_FEE_USDC } from "@/utils/feeCalculator";
+import { ARC_USDC_MINT } from "@/config/arcChain";
+import { useInvalidateTransactionHistory } from "@/hooks/useTransactionHistory";
 
 const BuyUSDCNaira = () => {
     const navigate = useNavigate();
+    const location = useLocation();
     const { user } = usePrivy();
-    const { wallets } = useWallets();
+    const { wallets: evmWallets } = useEvmWallets();
+    const { wallets: solanaWalletsList } = useSolanaWallets();
+
+    const [network, setNetwork] = useState<"solana" | "arc">("solana");
+    const invalidateTxHistory = useInvalidateTransactionHistory();
     
     // PAJ Session Management
     const { 
@@ -25,13 +33,58 @@ const BuyUSDCNaira = () => {
         handleModalClose 
     } = usePajSession();
 
-    // Mirror Home.tsx: filter for Solana wallets, fall back to linked accounts
-    const solanaWallets = wallets.filter((w) => w.walletClientType === "solana");
-    const linkedSolana = (user?.linkedAccounts ?? []).filter(
-        (a: any) => a.chainType === "solana" || a.chain === "solana"
+    // Support URL param pre-selection (e.g. ?network=arc&amount=50000)
+    useEffect(() => {
+        const params = new URLSearchParams(location.search || window.location.search || "");
+        const netParam = params.get("network");
+        if (netParam === "arc") setNetwork("arc");
+        else if (netParam === "solana") setNetwork("solana");
+
+        const amountParam = params.get("amount");
+        if (amountParam && Number(amountParam) > 0) {
+            setAmountNaira(amountParam);
+        }
+    }, [location.search]);
+
+    // Mirror Home.tsx & SendWallet.tsx: resolve Solana and Arc (EVM) wallets
+    const linkedWallets = (user?.linkedAccounts ?? []).filter(
+        (a): a is typeof a & { address?: string; chainType?: string; chain?: string } =>
+            (a as { type?: string }).type === "wallet" || (a as { type?: string }).type === "smart_wallet"
     );
+
+    const linkedSolana = linkedWallets.filter(
+        (a) => a.chainType === "solana" || a.chain === "solana"
+    );
+    const linkedEthereum = linkedWallets.filter(
+        (a) =>
+            a.chainType === "ethereum" ||
+            a.chain === "ethereum" ||
+            (typeof a.address === "string" && a.address.startsWith("0x"))
+    );
+
+    const solanaWallets = solanaWalletsList.length
+        ? solanaWalletsList
+        : evmWallets.filter((w) => (w as { walletClientType?: string }).walletClientType === "solana");
+
     const primarySolanaAddress: string | undefined =
-        (solanaWallets[0] as any)?.address ?? (linkedSolana[0] as any)?.address;
+        solanaWallets[0]?.address ??
+        linkedSolana[0]?.address ??
+        (!user?.wallet?.address?.startsWith("0x") ? user?.wallet?.address : undefined);
+
+    const arcWallets = evmWallets.filter(
+        (w) =>
+            (w as { type?: string }).type === "ethereum" ||
+            w.walletClientType === "ethereum" ||
+            w.walletClientType === "privy" ||
+            (typeof w.address === "string" && w.address.startsWith("0x"))
+    );
+
+    const primaryArcAddress: string | undefined =
+        arcWallets[0]?.address ??
+        linkedEthereum[0]?.address ??
+        (user?.wallet?.address?.startsWith("0x") ? user.wallet.address : undefined);
+
+    const activeRecipientAddress = network === "arc" ? primaryArcAddress : primarySolanaAddress;
 
     const [amountNaira, setAmountNaira] = useState("");
     const [baseRate, setBaseRate] = useState<number | null>(null);
@@ -78,23 +131,34 @@ const BuyUSDCNaira = () => {
         e.preventDefault();
         setOrderError("");
 
-        // Use same address resolution pattern as Home.tsx
-        const walletAddress = primarySolanaAddress;
+        const walletAddress = network === "arc" ? primaryArcAddress : primarySolanaAddress;
 
-        console.log("Resolved Solana wallet address:", walletAddress);
-        console.log("All wallets:", wallets.map((w: any) => ({ address: w.address, type: w.walletClientType })));
+        console.log(`Resolved ${network} wallet address:`, walletAddress);
 
         if (!walletAddress) {
-            setOrderError("No Solana wallet found. Please connect your wallet.");
+            setOrderError(
+                network === "arc"
+                    ? "No Arc wallet found. Please ensure your Arc wallet is connected."
+                    : "No Solana wallet found. Please connect your wallet."
+            );
             return;
         }
 
-        // Validate it's a valid Base58 Solana address
-        const base58Regex = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
-        if (!base58Regex.test(walletAddress)) {
-            console.error("Invalid Base58 address:", walletAddress);
-            setOrderError(`Invalid wallet address format: "${walletAddress}". Please reconnect your wallet.`);
-            return;
+        // Validate address format based on chosen network
+        if (network === "solana") {
+            const base58Regex = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
+            if (!base58Regex.test(walletAddress)) {
+                console.error("Invalid Solana Base58 address:", walletAddress);
+                setOrderError(`Invalid Solana wallet address format: "${walletAddress}". Please reconnect your wallet.`);
+                return;
+            }
+        } else {
+            const evmRegex = /^0x[a-fA-F0-9]{40}$/;
+            if (!evmRegex.test(walletAddress)) {
+                console.error("Invalid Arc EVM address:", walletAddress);
+                setOrderError(`Invalid Arc wallet address format: "${walletAddress}". Please reconnect your wallet.`);
+                return;
+            }
         }
 
         const numAmount = Number(amountNaira);
@@ -103,14 +167,17 @@ const BuyUSDCNaira = () => {
             return;
         }
 
-        const USDC_MINT = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
+        const USDC_SOLANA_MINT = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
+
+        const orderChain = network === "arc" ? "ARC" : Chain.SOLANA;
+        const orderMint = network === "arc" ? ARC_USDC_MINT : USDC_SOLANA_MINT;
 
         console.log("Creating onramp order with:", {
             fiatAmount: numAmount,
             currency: Currency.NGN,
             recipient: walletAddress,
-            mint: USDC_MINT,
-            chain: Chain.SOLANA,
+            mint: orderMint,
+            chain: orderChain,
         });
 
         setCreatingOrder(true);
@@ -120,8 +187,9 @@ const BuyUSDCNaira = () => {
             if (!token) {
                 try {
                     token = await requestSession();
-                } catch (err: any) {
-                    setOrderError(err?.message || "Session setup required. Please try again.");
+                } catch (sessionErr: unknown) {
+                    const msg = sessionErr instanceof Error ? sessionErr.message : String(sessionErr);
+                    setOrderError(msg || "Session setup required. Please try again.");
                     setCreatingOrder(false);
                     return;
                 }
@@ -136,11 +204,11 @@ const BuyUSDCNaira = () => {
                     fiatAmount: numAmount,
                     currency: Currency.NGN,
                     recipient: walletAddress,
-                    mint: USDC_MINT,
-                    chain: Chain.SOLANA,
+                    mint: orderMint,
+                    chain: orderChain as unknown as Chain,
                     webhookURL: webhookUrl("/webhook/paj-ramp"),
                     fee,
-                } as any,
+                },
                 token
             );
             console.log("Order created:", newOrder);
@@ -153,9 +221,48 @@ const BuyUSDCNaira = () => {
                     : netUSDC
             );
             setOrder(newOrder);
-        } catch (err: any) {
+
+            // Record in backend transaction history for immediate dashboard visibility
+            if (user?.id) {
+                const finalAmount = newOrder?.amount && newOrder.amount > 0 ? Math.max(0, newOrder.amount - fee) : netUSDC;
+                void apiFetch("/transactions", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        privyUserId: user.id,
+                        chainType: network === "arc" ? "arc" : "solana",
+                        assetSymbol: "USDC",
+                        amount: finalAmount.toString(),
+                        direction: "incoming",
+                        txSignature: newOrder.id || null,
+                        fromAddress: "PAJ Virtual Bank",
+                        toAddress: walletAddress,
+                        source: "onramp",
+                    }),
+                }).finally(() => {
+                    void invalidateTxHistory();
+                });
+            } else {
+                void invalidateTxHistory();
+            }
+        } catch (err: unknown) {
             console.error("Order creation failed:", err);
-            setOrderError(err?.message || "Failed to create order. Please try again.");
+            let msg = "Failed to create order. Please try again.";
+            if (typeof err === "string") {
+                msg = err;
+            } else if (err instanceof Error) {
+                msg = err.message;
+            } else if (typeof err === "object" && err !== null) {
+                const obj = err as Record<string, unknown>;
+                if (typeof obj.message === "string") {
+                    msg = obj.message;
+                } else if (Array.isArray(obj.message)) {
+                    msg = obj.message.join(", ");
+                } else if (typeof obj.error === "string") {
+                    msg = obj.error;
+                }
+            }
+            setOrderError(msg);
         } finally {
             setCreatingOrder(false);
         }
@@ -195,6 +302,59 @@ const BuyUSDCNaira = () => {
                 <div className="glass-card p-6 md:p-8 rounded-2xl max-w-md">
                     {!order ? (
                         <form onSubmit={handleBuy} className="space-y-6">
+                            {/* Destination Network Selector */}
+                            <div className="space-y-2">
+                                <label className="block text-sm font-medium">
+                                    Destination Network
+                                </label>
+                                <div className="grid grid-cols-2 gap-2 p-1 bg-secondary/30 rounded-xl border border-border/60">
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setNetwork("solana");
+                                            setOrderError("");
+                                        }}
+                                        className={`flex flex-col items-center justify-center py-2.5 px-3 rounded-lg text-xs font-semibold transition-all ${
+                                            network === "solana"
+                                                ? "bg-primary text-primary-foreground shadow-sm"
+                                                : "text-muted-foreground hover:text-foreground hover:bg-secondary/50"
+                                        }`}
+                                    >
+                                        <div className="flex items-center gap-1.5">
+                                            <span className={`w-2 h-2 rounded-full ${network === "solana" ? "bg-white" : "bg-purple-400"}`} />
+                                            <span>Solana</span>
+                                        </div>
+                                        <span className="text-[10px] opacity-80 mt-0.5">SPL USDC</span>
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setNetwork("arc");
+                                            setOrderError("");
+                                        }}
+                                        className={`flex flex-col items-center justify-center py-2.5 px-3 rounded-lg text-xs font-semibold transition-all ${
+                                            network === "arc"
+                                                ? "bg-primary text-primary-foreground shadow-sm"
+                                                : "text-muted-foreground hover:text-foreground hover:bg-secondary/50"
+                                        }`}
+                                    >
+                                        <div className="flex items-center gap-1.5">
+                                            <span className={`w-2 h-2 rounded-full ${network === "arc" ? "bg-white" : "bg-emerald-400"}`} />
+                                            <span>Arc</span>
+                                        </div>
+                                        <span className="text-[10px] opacity-80 mt-0.5">Native USDC</span>
+                                    </button>
+                                </div>
+                                <div className="flex items-center justify-between text-xs text-muted-foreground px-1">
+                                    <span>Recipient:</span>
+                                    <span className="font-mono text-foreground font-medium truncate max-w-[200px]">
+                                        {activeRecipientAddress
+                                            ? `${activeRecipientAddress.slice(0, 6)}...${activeRecipientAddress.slice(-4)}`
+                                            : "No wallet found"}
+                                    </span>
+                                </div>
+                            </div>
+
                             <div className="space-y-2">
                                 <label htmlFor="amount" className="block text-sm font-medium">
                                     Amount (NGN)
@@ -297,6 +457,18 @@ const BuyUSDCNaira = () => {
                                         <p className="font-medium text-foreground">{orderPlatformFee.toFixed(2)} USDC</p>
                                         <p>Fee</p>
                                     </div>
+                                    <div>
+                                        <p className="font-semibold text-foreground">
+                                            {network === "arc" ? "Arc (Layer-1)" : "Solana"}
+                                        </p>
+                                        <p>Network</p>
+                                    </div>
+                                    <div>
+                                        <p className="font-mono text-foreground truncate max-w-[140px]">
+                                            {order.recipient ? `${order.recipient.slice(0, 6)}...${order.recipient.slice(-4)}` : ""}
+                                        </p>
+                                        <p>Destination</p>
+                                    </div>
                                 </div>
                                 {order.id && (
                                     <p className="text-xs text-muted-foreground font-mono">Order ID: {order.id}</p>
@@ -329,7 +501,7 @@ const BuyUSDCNaira = () => {
                             </div>
 
                             <div className="bg-primary/5 rounded-lg p-3 text-xs text-muted-foreground text-left">
-                                <p><strong>Note:</strong> You will receive ~<strong>{orderNetUSDC.toFixed(2)} USDC</strong> at <span className="font-mono break-all">{order.recipient}</span> once the transfer is confirmed.</p>
+                                <p><strong>Note:</strong> You will receive ~<strong>{orderNetUSDC.toFixed(2)} USDC</strong> on <strong>{network === "arc" ? "Arc Network" : "Solana Network"}</strong> at <span className="font-mono break-all">{order.recipient}</span> once the transfer is confirmed.</p>
                             </div>
 
                             <Button

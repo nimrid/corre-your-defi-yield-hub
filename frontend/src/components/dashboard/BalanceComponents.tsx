@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo } from "react";
 import { usePrivy } from "@privy-io/react-auth";
 import { useNavigate } from "react-router-dom";
 
-export const Balance = ({ wallet, address }: { wallet: any, address?: string }) => {
+export const Balance = ({ wallet, address, chain }: { wallet: any; address?: string; chain?: "solana" | "arc" }) => {
   const { user } = usePrivy();
   const [balance, setBalance] = useState<string>("-");
 
@@ -13,8 +13,38 @@ export const Balance = ({ wallet, address }: { wallet: any, address?: string }) 
 
     const fetchBalance = async () => {
       try {
+        // For Arc wallets, fetch native USDC balance directly via Arc RPC.
+        if (chain === "arc" || walletChain === "arc") {
+          if (!address) {
+            if (isMounted) setBalance("-");
+            return;
+          }
+
+          try {
+            const { formatEther } = await import("viem");
+            const { getArcPublicClient } = await import("@/config/arcChain");
+            const client = getArcPublicClient();
+            const raw = await client.getBalance({
+              address: address as `0x${string}`,
+            });
+            const formatted = formatEther(raw);
+            if (isMounted) {
+              setBalance(
+                `${Number(formatted).toLocaleString(undefined, {
+                  maximumFractionDigits: 4,
+                })} USDC`
+              );
+            }
+            return;
+          } catch {
+            if (isMounted) setBalance("0 USDC");
+            return;
+          }
+        }
+
         // For Solana wallets, fetch USDC SPL token balance directly via RPC.
         if (
+          chain === "solana" ||
           walletChain === "solana"
         ) {
           if (!address) {
@@ -114,7 +144,7 @@ export const Balance = ({ wallet, address }: { wallet: any, address?: string }) 
     return () => {
       isMounted = false;
     };
-  }, [user?.id, address, walletChain]);
+  }, [user?.id, address, walletChain, chain]);
 
   return <p className="text-lg font-bold">{balance}</p>;
 };

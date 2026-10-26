@@ -1,6 +1,6 @@
 import Navigation from "@/components/Navigation";
-import { ArrowLeft, Landmark, Loader2, CheckCircle2, AlertCircle, Check, ChevronsUpDown, Send, ShieldAlert } from "lucide-react";
-import { useNavigate } from "react-router-dom";
+import { ArrowLeft, Landmark, Loader2, CheckCircle2, AlertCircle, Check, ChevronsUpDown, Send, ShieldAlert, ExternalLink } from "lucide-react";
+import { useNavigate, useLocation } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { useState, useEffect } from "react";
 import {
@@ -22,18 +22,24 @@ import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, Command
 import { cn } from "@/lib/utils";
 import { usePajSession } from "@/hooks/usePajSession";
 import { PajSessionModal } from "@/components/PajSessionModal";
-import { usePrivy } from "@privy-io/react-auth";
+import { usePrivy, useWallets as useEvmWallets, getEmbeddedConnectedWallet } from "@privy-io/react-auth";
 import { calculatePlatformFee, MARKUP_PERCENT, MIN_PLATFORM_FEE_USDC } from "@/utils/feeCalculator";
 import { useWallets as useSolanaWallets } from "@privy-io/react-auth/solana";
 import { webhookUrl, apiFetch } from "@/services/apiClient";
+import { arc, ARC_USDC_MINT, getArcPublicClient } from "@/config/arcChain";
+import { parseEther, formatEther } from "viem";
+import { useInvalidateTransactionHistory } from "@/hooks/useTransactionHistory";
 
 // USDC mint on Solana
 const USDC_MINT = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
 
 const SendBankAfrica = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const { user } = usePrivy();
-  const { wallets } = useSolanaWallets();
+  const { wallets: solanaWallets } = useSolanaWallets();
+  const { wallets: evmWallets } = useEvmWallets();
+  const invalidateTxHistory = useInvalidateTransactionHistory();
   
   // PAJ Session Management
   const { 
@@ -44,6 +50,8 @@ const SendBankAfrica = () => {
     handleSessionSuccess, 
     handleModalClose 
   } = usePajSession();
+
+  const [network, setNetwork] = useState<"solana" | "arc">("solana");
   
   const [amountUSDC, setAmountUSDC] = useState("");
   const [baseRate, setBaseRate] = useState<number | null>(null);
@@ -54,6 +62,15 @@ const SendBankAfrica = () => {
   const [balanceLoading, setBalanceLoading] = useState(false);
 
   const PAJ_OFFRAMP_FEE = 0.5;
+
+  // Support URL query preselection (e.g. ?network=arc)
+  useEffect(() => {
+    const params = new URLSearchParams(location.search || window.location.search || "");
+    const net = params.get("network")?.toLowerCase();
+    if (net === "arc" || net === "solana") {
+      setNetwork(net);
+    }
+  }, [location.search]);
 
   // Bank selection dialog state
   const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -92,17 +109,51 @@ const SendBankAfrica = () => {
     rate: number;
     fee: number;
     platformFee: number;
+    network: "solana" | "arc";
+    txHash?: string;
   } | null>(null);
 
   useEffect(() => {
+    let isMounted = true;
     const fetchWalletUsdcBalance = async () => {
-      const selectedWallet = wallets.find(
-        (w) => (w as any).walletClientType === "solana" || (w as any).chainType === "solana"
-      ) || wallets[0];
-
-      if (!selectedWallet?.address) return;
-
       setBalanceLoading(true);
+
+      if (network === "arc") {
+        const selectedEvmWallet = getEmbeddedConnectedWallet(evmWallets) || evmWallets[0];
+        if (!selectedEvmWallet?.address) {
+          if (isMounted) setWalletUsdcBalance(null);
+          setBalanceLoading(false);
+          return;
+        }
+
+        try {
+          const client = getArcPublicClient();
+          const raw = await client.getBalance({
+            address: selectedEvmWallet.address as `0x${string}`,
+          });
+          if (isMounted) {
+            setWalletUsdcBalance(Number(formatEther(raw)));
+          }
+        } catch (err) {
+          console.error("[Offramp] Failed to fetch Arc USDC balance:", err);
+          if (isMounted) setWalletUsdcBalance(null);
+        } finally {
+          if (isMounted) setBalanceLoading(false);
+        }
+        return;
+      }
+
+      // Solana USDC balance
+      const selectedWallet = solanaWallets.find(
+        (w) => (w as any).walletClientType === "solana" || (w as any).chainType === "solana"
+      ) || solanaWallets[0];
+
+      if (!selectedWallet?.address) {
+        if (isMounted) setWalletUsdcBalance(null);
+        setBalanceLoading(false);
+        return;
+      }
+
       try {
         const { Connection, PublicKey } = await import("@solana/web3.js");
         const rawSolanaRpc = import.meta.env.VITE_SOLANA_RPC ?? "https://solana-mainnet.g.alchemy.com/v2/C5-LCLXSwlCEtsquSDPIj";
@@ -115,15 +166,22 @@ const SendBankAfrica = () => {
           const amt = acc?.account?.data?.parsed?.info?.tokenAmount?.uiAmount ?? 0;
           return sum + Number(amt || 0);
         }, 0);
-        setWalletUsdcBalance(totalBalance);
+        if (isMounted) {
+          setWalletUsdcBalance(totalBalance);
+        }
       } catch (err) {
-        console.error("Failed to fetch wallet USDC balance:", err);
+        console.error("[Offramp] Failed to fetch Solana wallet USDC balance:", err);
+        if (isMounted) setWalletUsdcBalance(null);
       } finally {
-        setBalanceLoading(false);
+        if (isMounted) setBalanceLoading(false);
       }
     };
-    fetchWalletUsdcBalance();
-  }, [wallets]);
+
+    void fetchWalletUsdcBalance();
+    return () => {
+      isMounted = false;
+    };
+  }, [network, solanaWallets, evmWallets]);
 
   useEffect(() => {
     const fetchBaseRate = async () => {
@@ -166,6 +224,22 @@ const SendBankAfrica = () => {
 
     if (isExceedingBalance || isBelowMinimum) {
       return;
+    }
+
+    if (network === "arc") {
+      const selectedEvmWallet = getEmbeddedConnectedWallet(evmWallets) || evmWallets[0];
+      if (!selectedEvmWallet?.address) {
+        alert("No Arc EVM wallet found. Please make sure you are logged in.");
+        return;
+      }
+    } else {
+      const selectedWallet = solanaWallets.find(
+        (w) => (w as any).walletClientType === "solana" || (w as any).chainType === "solana"
+      ) || solanaWallets[0];
+      if (!selectedWallet?.address) {
+        alert("No Solana wallet found. Please make sure your wallet is connected.");
+        return;
+      }
     }
     
     // Request session token first if needed
@@ -320,13 +394,16 @@ const SendBankAfrica = () => {
         bankInstId = resolved.bank.id;
       }
 
+      const orderChain = network === "arc" ? "ARC" : Chain.SOLANA;
+      const orderMint = network === "arc" ? ARC_USDC_MINT : USDC_MINT;
+
       console.log("[Offramp] Calling createOfframpOrder with:", {
         bank: bankInstId,
         accountNumber: confirmAccount.accountNumber,
         currency: Currency.NGN,
         amount: Number(amountUSDC),
-        mint: USDC_MINT,
-        chain: Chain.SOLANA,
+        mint: orderMint,
+        chain: orderChain,
         webhookURL: webhookUrl("/webhook/paj-ramp"),
       });
 
@@ -337,8 +414,8 @@ const SendBankAfrica = () => {
           accountNumber: confirmAccount.accountNumber,
           currency: Currency.NGN,
           amount: Number(amountUSDC),
-          mint: USDC_MINT,
-          chain: Chain.SOLANA,
+          mint: orderMint,
+          chain: orderChain as unknown as Chain,
           webhookURL: webhookUrl("/webhook/paj-ramp"),
           fee: dynamicFee,
         } as any,
@@ -346,9 +423,54 @@ const SendBankAfrica = () => {
       );
       console.log("[Offramp] Order created successfully:", order);
       setCreatedOrderId(order?.id || "");
-      setCreatedOrder(
-        order
-          ? {
+
+      // ── On-chain transfer of USDC to PAJ deposit address ──
+      try {
+        if (network === "arc") {
+          const selectedEvmWallet = getEmbeddedConnectedWallet(evmWallets) || evmWallets[0];
+
+          if (!selectedEvmWallet?.address) {
+            console.warn("[Offramp] No Arc EVM wallet found. Please transfer manually.");
+          } else {
+            console.log("[Offramp] Sending Arc USDC from wallet:", selectedEvmWallet.address, "to deposit address:", order.address);
+
+            // Switch to Arc network if needed
+            if (selectedEvmWallet.chainId !== `eip155:${arc.id}`) {
+              try {
+                await selectedEvmWallet.switchChain(arc.id);
+              } catch (switchErr: unknown) {
+                console.warn("[Offramp] Notice switching to Arc:", switchErr);
+              }
+            }
+
+            const provider = await selectedEvmWallet.getEthereumProvider();
+            const rawWei = parseEther(amountUSDC.trim());
+
+            const txHash = (await provider.request({
+              method: "eth_sendTransaction",
+              params: [
+                {
+                  from: selectedEvmWallet.address,
+                  to: order.address,
+                  value: `0x${rawWei.toString(16)}`,
+                },
+              ],
+            })) as string;
+
+            console.log("[Offramp] Arc USDC transaction broadcast! Hash:", txHash);
+
+            // Wait for confirmation via dedicated Arc RPC
+            try {
+              const publicClient = getArcPublicClient();
+              await publicClient.waitForTransactionReceipt({
+                hash: txHash as `0x${string}`,
+              });
+              console.log("[Offramp] Arc transaction confirmed on-chain!");
+            } catch (receiptErr) {
+              console.warn("[Offramp] Arc waitForTransactionReceipt timed out:", receiptErr);
+            }
+
+            setCreatedOrder({
               accountNumber: confirmAccount?.accountNumber ?? "",
               currency: Currency.NGN,
               amount: order.amount,
@@ -356,200 +478,240 @@ const SendBankAfrica = () => {
               rate: order.rate,
               fee: order.fee,
               platformFee: dynamicFee,
-            }
-          : null
-      );
-
-      try {
-        const selectedWallet = wallets.find(w => (w as any).walletClientType === "solana" || (w as any).chainType === "solana") || wallets[0];
-        
-        if (!selectedWallet?.address) {
-          console.warn("No Solana wallet found. Please transfer manually.");
-        } else {
-          console.log("[Offramp] Sending USDC transaction from wallet:", selectedWallet.address);
-          
-          const { Connection, PublicKey, Transaction, VersionedTransaction, TransactionMessage } = await import("@solana/web3.js");
-          const { getAssociatedTokenAddress, createTransferInstruction, createAssociatedTokenAccountInstruction } = await import("@solana/spl-token");
-
-          const rawSolanaRpc = import.meta.env.VITE_SOLANA_RPC ?? "https://solana-mainnet.g.alchemy.com/v2/C5-LCLXSwlCEtsquSDPIj";
-          const rawWsRpc = import.meta.env.VITE_SOLANA_WS_RPC ?? "wss://mainnet.helius-rpc.com/?api-key=41c75a65-eb0d-4509-9851-7ba59261081a";
-          const SOLANA_RPC = rawSolanaRpc.replace(/^['"]|['"]$/g, "").trim();
-          const SOLANA_WS_RPC = rawWsRpc.replace(/^['"]|['"]$/g, "").trim();
-
-          const connection = new Connection(SOLANA_RPC, {
-            commitment: "confirmed",
-            wsEndpoint: SOLANA_WS_RPC,
-          });
-
-          const fromPubkey = new PublicKey(selectedWallet.address);
-          const toPubkey = new PublicKey(order.address);
-
-          const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash("confirmed");
-
-          // IMPORTANT: Use the user-specified amount (amountUSDC), NOT order.amount.
-          // The PAJ API returns order.amount = user amount + platform fee (e.g. 10.49 for 10 USDC input).
-          // The fee is already accounted for in the order — we only send what the user agreed to.
-          const amountNumber = Number(amountUSDC);
-          const usdcMint = new PublicKey(USDC_MINT);
-          
-          const fromTokenAccount = await getAssociatedTokenAddress(usdcMint, fromPubkey);
-          const toTokenAccount = await getAssociatedTokenAddress(usdcMint, toPubkey);
-
-          // 6 decimals for USDC on Solana
-          const rawAmount = Math.floor(amountNumber * 1_000_000);
-
-          const instructions: any[] = [];
-
-          const toAccountInfo = await connection.getAccountInfo(toTokenAccount);
-          if (!toAccountInfo) {
-            instructions.push(
-              createAssociatedTokenAccountInstruction(fromPubkey, toTokenAccount, toPubkey, usdcMint)
-            );
-          }
-
-          instructions.push(
-            createTransferInstruction(fromTokenAccount, toTokenAccount, fromPubkey, rawAmount)
-          );
-
-          // Security: Strip CloseAccount instructions (discriminator 0x0a)
-          const filteredInstructions = instructions.filter((ix) => {
-            if (ix.data && ix.data.length > 0) {
-              return ix.data[0] !== 0x0a;
-            }
-            return true;
-          });
-
-          // ── Gas sponsorship check ──
-          let useGasSponsorship = false;
-          let feePayerAddress = "";
-
-          try {
-            const eligibilityResponse = await apiFetch("/gas-sponsorship/check", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                privyUserId: user?.id,
-                amountUSD: Number(amountUSDC),
-              }),
+              network: "arc",
+              txHash,
             });
 
-            if (eligibilityResponse.ok) {
-              const eligibility = await eligibilityResponse.json();
-
-              if (eligibility.sponsorshipAllowed !== false && eligibility.feePayerAddress) {
-                useGasSponsorship = true;
-                feePayerAddress = eligibility.feePayerAddress;
-                console.log("[Offramp] Gas sponsorship approved, fee payer:", feePayerAddress);
-              } else {
-                console.log("[Offramp] Gas sponsorship not available:", eligibility.reason || "amount above limit");
-              }
+            if (user?.id) {
+              void apiFetch("/transactions", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  privyUserId: user.id,
+                  chainType: "arc",
+                  assetSymbol: "USDC",
+                  amount: order.amount.toString(),
+                  direction: "outgoing",
+                  txSignature: txHash || null,
+                  fromAddress: selectedEvmWallet.address,
+                  toAddress: order.address,
+                  source: "offramp",
+                }),
+              }).finally(() => {
+                void invalidateTxHistory();
+              });
             } else {
-              console.warn("[Offramp] Gas sponsorship check returned non-OK, falling back to user-pays");
+              void invalidateTxHistory();
             }
-          } catch (eligibilityError) {
-            console.warn("[Offramp] Gas sponsorship check failed, falling back to user-pays:", eligibilityError);
           }
-
-          let signature = "";
-
-          if (useGasSponsorship) {
-            // Build a VersionedTransaction with the fee payer as the payer
-            const message = new TransactionMessage({
-              payerKey: new PublicKey(feePayerAddress),
-              recentBlockhash: blockhash,
-              instructions: filteredInstructions,
-            }).compileToV0Message();
-
-            const versionedTransaction = new VersionedTransaction(message);
-
-            // User signs (does NOT broadcast)
-            const signedTxResponse = await (selectedWallet as any).signTransaction({
-              transaction: versionedTransaction.serialize(),
-            });
-
-            const serializedTransaction = Buffer.from(signedTxResponse.signedTransaction).toString("base64");
-
-            // Send to backend for fee payer co-signing + broadcast
-            const sponsorRes = await apiFetch("/gas-sponsorship/sponsor-transaction", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ transaction: serializedTransaction }),
-            });
-
-            if (!sponsorRes.ok) {
-              let errText = await sponsorRes.text();
-              try {
-                const errObj = JSON.parse(errText);
-                errText = errObj.error || errText;
-              } catch (_e) {}
-              throw new Error(`Sponsorship failed: ${errText}`);
-            }
-
-            const sponsorData = await sponsorRes.json();
-            signature = sponsorData.transactionHash;
-            console.log("[Offramp] Sponsored transaction sent:", signature);
+        } else {
+          // Solana SPL USDC transfer
+          const selectedWallet = solanaWallets.find(w => (w as any).walletClientType === "solana" || (w as any).chainType === "solana") || solanaWallets[0];
+          
+          if (!selectedWallet?.address) {
+            console.warn("No Solana wallet found. Please transfer manually.");
           } else {
-            // Fallback: user pays gas fees
-            const transaction = new Transaction();
-            transaction.feePayer = fromPubkey;
-            transaction.recentBlockhash = blockhash;
+            console.log("[Offramp] Sending USDC transaction from wallet:", selectedWallet.address);
+            
+            const { Connection, PublicKey, Transaction, VersionedTransaction, TransactionMessage } = await import("@solana/web3.js");
+            const { getAssociatedTokenAddress, createTransferInstruction, createAssociatedTokenAccountInstruction } = await import("@solana/spl-token");
 
-            for (const ix of filteredInstructions) {
-              transaction.add(ix);
-            }
+            const rawSolanaRpc = import.meta.env.VITE_SOLANA_RPC ?? "https://solana-mainnet.g.alchemy.com/v2/C5-LCLXSwlCEtsquSDPIj";
+            const rawWsRpc = import.meta.env.VITE_SOLANA_WS_RPC ?? "wss://mainnet.helius-rpc.com/?api-key=41c75a65-eb0d-4509-9851-7ba59261081a";
+            const SOLANA_RPC = rawSolanaRpc.replace(/^['"]|['"]$/g, "").trim();
+            const SOLANA_WS_RPC = rawWsRpc.replace(/^['"]|['"]$/g, "").trim();
 
-            const signedTxResponse = await selectedWallet.signTransaction({
-              transaction: transaction.serialize({ requireAllSignatures: false }),
+            const connection = new Connection(SOLANA_RPC, {
+              commitment: "confirmed",
+              wsEndpoint: SOLANA_WS_RPC,
             });
 
-            signature = await connection.sendRawTransaction(signedTxResponse.signedTransaction);
-          }
+            const fromPubkey = new PublicKey(selectedWallet.address);
+            const toPubkey = new PublicKey(order.address);
 
-          // Wait for confirmation with a robust approach
-          try {
-            await connection.confirmTransaction(
-              {
-                signature,
-                blockhash,
-                lastValidBlockHeight,
-              },
-              "confirmed"
+            const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash("confirmed");
+
+            // IMPORTANT: Use user-specified amountUSDC
+            const amountNumber = Number(amountUSDC);
+            const usdcMint = new PublicKey(USDC_MINT);
+            
+            const fromTokenAccount = await getAssociatedTokenAddress(usdcMint, fromPubkey);
+            const toTokenAccount = await getAssociatedTokenAddress(usdcMint, toPubkey);
+
+            // 6 decimals for USDC on Solana
+            const rawAmount = Math.floor(amountNumber * 1_000_000);
+
+            const instructions: any[] = [];
+
+            const toAccountInfo = await connection.getAccountInfo(toTokenAccount);
+            if (!toAccountInfo) {
+              instructions.push(
+                createAssociatedTokenAccountInstruction(fromPubkey, toTokenAccount, toPubkey, usdcMint)
+              );
+            }
+
+            instructions.push(
+              createTransferInstruction(fromTokenAccount, toTokenAccount, fromPubkey, rawAmount)
             );
-          } catch (confirmError: any) {
-            console.warn("[Offramp] Confirmation wait timed out or failed, checking status manually:", confirmError);
 
-            const status = await connection.getSignatureStatus(signature);
-            const hasSucceeded =
-              status.value?.confirmationStatus === "confirmed" ||
-              status.value?.confirmationStatus === "finalized";
+            // Security: Strip CloseAccount instructions (discriminator 0x0a)
+            const filteredInstructions = instructions.filter((ix) => {
+              if (ix.data && ix.data.length > 0) {
+                return ix.data[0] !== 0x0a;
+              }
+              return true;
+            });
 
-            if (!hasSucceeded && status.value?.err) {
-              throw new Error(`Transaction failed: ${JSON.stringify(status.value.err)}`);
+            // ── Gas sponsorship check ──
+            let useGasSponsorship = false;
+            let feePayerAddress = "";
+
+            try {
+              const eligibilityResponse = await apiFetch("/gas-sponsorship/check", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  privyUserId: user?.id,
+                  amountUSD: Number(amountUSDC),
+                }),
+              });
+
+              if (eligibilityResponse.ok) {
+                const eligibility = await eligibilityResponse.json();
+
+                if (eligibility.sponsorshipAllowed !== false && eligibility.feePayerAddress) {
+                  useGasSponsorship = true;
+                  feePayerAddress = eligibility.feePayerAddress;
+                  console.log("[Offramp] Gas sponsorship approved, fee payer:", feePayerAddress);
+                } else {
+                  console.log("[Offramp] Gas sponsorship not available:", eligibility.reason || "amount above limit");
+                }
+              } else {
+                console.warn("[Offramp] Gas sponsorship check returned non-OK, falling back to user-pays");
+              }
+            } catch (eligibilityError) {
+              console.warn("[Offramp] Gas sponsorship check failed, falling back to user-pays:", eligibilityError);
             }
 
-            if (!status.value) {
-              console.error("[Offramp] No status found for signature after timeout");
+            let signature = "";
+
+            if (useGasSponsorship) {
+              // Build a VersionedTransaction with the fee payer as the payer
+              const message = new TransactionMessage({
+                payerKey: new PublicKey(feePayerAddress),
+                recentBlockhash: blockhash,
+                instructions: filteredInstructions,
+              }).compileToV0Message();
+
+              const versionedTransaction = new VersionedTransaction(message);
+
+              // User signs (does NOT broadcast)
+              const signedTxResponse = await (selectedWallet as any).signTransaction({
+                transaction: versionedTransaction.serialize(),
+              });
+
+              const serializedTransaction = Buffer.from(signedTxResponse.signedTransaction).toString("base64");
+
+              // Send to backend for fee payer co-signing + broadcast
+              const sponsorRes = await apiFetch("/gas-sponsorship/sponsor-transaction", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ transaction: serializedTransaction }),
+              });
+
+              if (!sponsorRes.ok) {
+                let errText = await sponsorRes.text();
+                try {
+                  const errObj = JSON.parse(errText);
+                  errText = errObj.error || errText;
+                } catch (_e) {
+                  // ignore JSON parse error
+                }
+                throw new Error(`Sponsorship failed: ${errText}`);
+              }
+
+              const sponsorData = await sponsorRes.json();
+              signature = sponsorData.transactionHash;
+              console.log("[Offramp] Sponsored transaction sent:", signature);
+            } else {
+              // Fallback: user pays gas fees
+              const transaction = new Transaction();
+              transaction.feePayer = fromPubkey;
+              transaction.recentBlockhash = blockhash;
+
+              for (const ix of filteredInstructions) {
+                transaction.add(ix);
+              }
+
+              const signedTxResponse = await selectedWallet.signTransaction({
+                transaction: transaction.serialize({ requireAllSignatures: false }),
+              });
+
+              signature = await connection.sendRawTransaction(signedTxResponse.signedTransaction);
             }
-          }
 
-          console.log("[Offramp] Transaction successfully completed:", signature);
+            // Wait for confirmation with a robust approach
+            try {
+              await connection.confirmTransaction(
+                {
+                  signature,
+                  blockhash,
+                  lastValidBlockHeight,
+                },
+                "confirmed"
+              );
+            } catch (confirmError: any) {
+              console.warn("[Offramp] Confirmation wait timed out or failed, checking status manually:", confirmError);
 
-          if (user?.id) {
-            void apiFetch("/transactions", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                privyUserId: user.id,
-                chainType: "solana",
-                assetSymbol: "USDC",
-                amount: order.amount.toString(),
-                direction: "outgoing",
-                txSignature: signature || null,
-                fromAddress: selectedWallet.address,
-                toAddress: order.address,
-                source: "offramp",
-              }),
-            }).catch(() => {});
+              const status = await connection.getSignatureStatus(signature);
+              const hasSucceeded =
+                status.value?.confirmationStatus === "confirmed" ||
+                status.value?.confirmationStatus === "finalized";
+
+              if (!hasSucceeded && status.value?.err) {
+                throw new Error(`Transaction failed: ${JSON.stringify(status.value.err)}`);
+              }
+
+              if (!status.value) {
+                console.error("[Offramp] No status found for signature after timeout");
+              }
+            }
+
+            console.log("[Offramp] Transaction successfully completed:", signature);
+
+            setCreatedOrder({
+              accountNumber: confirmAccount?.accountNumber ?? "",
+              currency: Currency.NGN,
+              amount: order.amount,
+              fiatAmount: order.fiatAmount,
+              rate: order.rate,
+              fee: order.fee,
+              platformFee: dynamicFee,
+              network: "solana",
+              txHash: signature,
+            });
+
+            if (user?.id) {
+              void apiFetch("/transactions", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  privyUserId: user.id,
+                  chainType: "solana",
+                  assetSymbol: "USDC",
+                  amount: order.amount.toString(),
+                  direction: "outgoing",
+                  txSignature: signature || null,
+                  fromAddress: selectedWallet.address,
+                  toAddress: order.address,
+                  source: "offramp",
+                }),
+              }).finally(() => {
+                void invalidateTxHistory();
+              });
+            } else {
+              void invalidateTxHistory();
+            }
           }
         }
       } catch (txErr: any) {
@@ -566,15 +728,27 @@ const SendBankAfrica = () => {
 
       setOrderSuccess(true);
     } catch (err: any) {
-      // PAJ errors come back as axios errors — real message is in err.response.data
-      const pajMsg =
-        err?.response?.data?.message ||
-        err?.response?.data?.error ||
-        err?.response?.data ||
-        err?.message ||
-        "Failed to create order. Please try again.";
       console.error("[Offramp] createOfframpOrder failed:", err?.response?.data ?? err);
-      setOrderError(typeof pajMsg === "string" ? pajMsg : JSON.stringify(pajMsg));
+      let pajMsg = "Failed to create order. Please try again.";
+      if (typeof err === "string") {
+        pajMsg = err;
+      } else if (err instanceof Error) {
+        pajMsg = err.message;
+      } else if (typeof err === "object" && err !== null) {
+        const resData = err.response?.data;
+        if (typeof resData === "string") {
+          pajMsg = resData;
+        } else if (typeof resData?.message === "string") {
+          pajMsg = resData.message;
+        } else if (Array.isArray(resData?.message)) {
+          pajMsg = resData.message.join(", ");
+        } else if (typeof resData?.error === "string") {
+          pajMsg = resData.error;
+        } else if (typeof err.message === "string") {
+          pajMsg = err.message;
+        }
+      }
+      setOrderError(pajMsg);
     } finally {
       setCreatingOrder(false);
     }
@@ -613,6 +787,35 @@ const SendBankAfrica = () => {
 
         <div className="glass-card p-6 md:p-8 rounded-2xl max-w-md">
           <form onSubmit={handleOpenDialog} className="space-y-6">
+            {/* Source Network Toggle */}
+            <div className="space-y-2">
+              <label className="block text-sm font-medium">Source Network</label>
+              <div className="grid grid-cols-2 gap-2 p-1 bg-secondary/40 rounded-xl border border-border/50">
+                <button
+                  type="button"
+                  onClick={() => setNetwork("solana")}
+                  className={`py-2 px-3 text-xs font-semibold rounded-lg transition-all flex items-center justify-center gap-2 ${
+                    network === "solana"
+                      ? "bg-primary text-primary-foreground shadow-sm"
+                      : "text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  Solana (SPL USDC)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setNetwork("arc")}
+                  className={`py-2 px-3 text-xs font-semibold rounded-lg transition-all flex items-center justify-center gap-2 ${
+                    network === "arc"
+                      ? "bg-primary text-primary-foreground shadow-sm"
+                      : "text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  Arc (Native USDC)
+                </button>
+              </div>
+            </div>
+
             <div className="space-y-2">
               <div className="flex justify-between items-center">
                 <label htmlFor="amount" className="block text-sm font-medium">
@@ -632,7 +835,15 @@ const SendBankAfrica = () => {
                   {walletUsdcBalance !== null && walletUsdcBalance > 0 && (
                     <button
                       type="button"
-                      onClick={() => setAmountUSDC(walletUsdcBalance.toString())}
+                      onClick={() => {
+                        if (network === "arc") {
+                          // Reserve 0.001 USDC for network gas fees on Arc
+                          const usable = Math.max(0, walletUsdcBalance - 0.001);
+                          setAmountUSDC(usable > 0 ? usable.toFixed(4) : walletUsdcBalance.toString());
+                        } else {
+                          setAmountUSDC(walletUsdcBalance.toString());
+                        }
+                      }}
                       className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-primary/10 text-primary hover:bg-primary/20 transition-colors uppercase ml-1"
                     >
                       MAX
@@ -960,6 +1171,13 @@ const SendBankAfrica = () => {
                     </span>
                   </div>
 
+                  <div className="flex justify-between items-center text-muted-foreground">
+                    <span>Source Network</span>
+                    <span className="font-semibold text-foreground">
+                      {network === "arc" ? "Arc (Native USDC)" : "Solana (SPL USDC)"}
+                    </span>
+                  </div>
+
                   <div className="border-t border-border/40 pt-2.5 space-y-1">
                     <p className="text-[11px] text-muted-foreground uppercase font-semibold tracking-wider">Recipient Account</p>
                     <div className="space-y-0.5">
@@ -1014,6 +1232,12 @@ const SendBankAfrica = () => {
                   <p className="text-sm text-emerald-600 dark:text-emerald-400 font-medium">
                     ✅ Order successful — USDC sent now
                   </p>
+                  <div className="flex justify-between items-center text-xs text-muted-foreground">
+                    <span>Source Network</span>
+                    <span className="font-semibold text-foreground">
+                      {createdOrder?.network === "arc" ? "Arc (Native USDC)" : "Solana (SPL USDC)"}
+                    </span>
+                  </div>
                   {createdOrder?.accountNumber && (
                     <div className="space-y-1">
                       <p className="text-xs text-muted-foreground font-medium">Recipient account number</p>
@@ -1066,6 +1290,23 @@ const SendBankAfrica = () => {
                   </div>
                   {createdOrderId && (
                     <p className="text-xs text-muted-foreground font-mono">Order ID: {createdOrderId}</p>
+                  )}
+                  {createdOrder?.txHash && (
+                    <div className="pt-2 border-t border-emerald-500/20">
+                      <a
+                        href={
+                          createdOrder.network === "arc"
+                            ? `https://explorer.arc.io/tx/${createdOrder.txHash}`
+                            : `https://solscan.io/tx/${createdOrder.txHash}`
+                        }
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1.5 text-xs text-primary underline hover:text-primary/80 transition-colors"
+                      >
+                        <span>View transaction on {createdOrder.network === "arc" ? "ArcScan" : "Solscan"}</span>
+                        <ExternalLink className="w-3.5 h-3.5" />
+                      </a>
+                    </div>
                   )}
                   <p className="text-xs text-muted-foreground">
                     Payout to <span className="font-medium">{confirmAccount?.accountName}</span> at{" "}

@@ -1,7 +1,8 @@
 import Navigation from "@/components/Navigation";
 import { ArrowLeft, Copy, CreditCard, Globe, Landmark, QrCode, ShieldCheck, Loader2, Sparkles } from "lucide-react";
 import { useNavigate } from "react-router-dom";
-import { usePrivy, useWallets, useFiatOnramp } from "@privy-io/react-auth";
+import { usePrivy, useWallets as useEvmWallets, useFiatOnramp } from "@privy-io/react-auth";
+import { useWallets as useSolanaWallets } from "@privy-io/react-auth/solana";
 import { useToast } from "@/hooks/use-toast";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -13,24 +14,51 @@ const BuyUSDC = () => {
     const { t } = useTranslation();
     const navigate = useNavigate();
     const { user } = usePrivy();
-    const { wallets } = useWallets();
+    const { wallets: evmWallets } = useEvmWallets();
+    const { wallets: solanaWalletsList } = useSolanaWallets();
     const { toast } = useToast();
     const { fund } = useFiatOnramp();
 
     const [isOnramping, setIsOnramping] = useState(false);
     const [cardModalOpen, setCardModalOpen] = useState(false);
+    const [receiveNetwork, setReceiveNetwork] = useState<"solana" | "arc">("solana");
 
-    // Resolve Solana Wallets
-    const solanaWallets = wallets.filter((w) => w.walletClientType === "solana");
+    // Resolve Solana & Arc Wallets
     const linkedWallets = (user?.linkedAccounts ?? []).filter(
-      (a: any) => a.type === "wallet" || a.type === "smart_wallet"
+      (a): a is typeof a & { address?: string; chainType?: string; chain?: string } =>
+        (a as { type?: string }).type === "wallet" || (a as { type?: string }).type === "smart_wallet"
     );
     const linkedSolana = linkedWallets.filter(
-      (a: any) => a.chainType === "solana" || a.chain === "solana"
+      (a) => a.chainType === "solana" || a.chain === "solana"
     );
+    const linkedEthereum = linkedWallets.filter(
+      (a) =>
+        a.chainType === "ethereum" ||
+        a.chain === "ethereum" ||
+        (typeof a.address === "string" && a.address.startsWith("0x"))
+    );
+
+    const solanaWallets = solanaWalletsList.length
+      ? solanaWalletsList
+      : evmWallets.filter((w) => (w as { walletClientType?: string }).walletClientType === "solana");
+
     const primarySolanaAddress: string | undefined =
-      (solanaWallets[0] as any)?.address ??
-      (linkedSolana[0] as any)?.address;
+      solanaWallets[0]?.address ??
+      linkedSolana[0]?.address ??
+      (!user?.wallet?.address?.startsWith("0x") ? user?.wallet?.address : undefined);
+
+    const arcWallets = evmWallets.filter(
+      (w) =>
+        (w as { type?: string }).type === "ethereum" ||
+        w.walletClientType === "ethereum" ||
+        w.walletClientType === "privy" ||
+        (typeof w.address === "string" && w.address.startsWith("0x"))
+    );
+
+    const primaryArcAddress: string | undefined =
+      arcWallets[0]?.address ??
+      linkedEthereum[0]?.address ??
+      (user?.wallet?.address?.startsWith("0x") ? user.wallet.address : undefined);
 
     const activeAddress = primarySolanaAddress;
 
@@ -73,9 +101,10 @@ const BuyUSDC = () => {
             description: t("buy_usdc.purchase_submitted_desc"),
           });
         }
-      } catch (error: any) {
+      } catch (error: unknown) {
         console.error("Fiat onramp error:", error);
-        const message = error?.message || "";
+        const errObj = error as { message?: string } | undefined;
+        const message = errObj?.message || (error instanceof Error ? error.message : String(error));
         const isUserClosed = message.toLowerCase().includes("user closed") || message.toLowerCase().includes("closed flow");
         
         if (!isUserClosed) {
@@ -252,6 +281,7 @@ const BuyUSDC = () => {
                             <div className="flex flex-wrap gap-1.5 text-[10px] text-muted-foreground">
                                 <span className="px-2 py-0.5 rounded-md bg-secondary/80 font-medium">Bank Transfer</span>
                                 <span className="px-2 py-0.5 rounded-md bg-secondary/80 font-medium">Naira (NGN)</span>
+                                <span className="px-2 py-0.5 rounded-md bg-secondary/80 font-medium">Solana & Arc</span>
                                 <span className="px-2 py-0.5 rounded-md bg-secondary/80 font-medium">PAJ Ramp</span>
                             </div>
                             <div className="flex items-center justify-between text-xs font-semibold text-emerald-500 group-hover:translate-x-1 transition-transform">
@@ -299,20 +329,56 @@ const BuyUSDC = () => {
                         <DialogContent className="sm:max-w-md">
                             <DialogHeader>
                                 <DialogTitle>{t("buy_usdc.receive_stablecoin")}</DialogTitle>
-                                <DialogDescription>Scan or copy your Solana wallet address below to receive USDC.</DialogDescription>
+                                <DialogDescription>Scan or copy your wallet address below to receive USDC.</DialogDescription>
                             </DialogHeader>
-                            <div className="flex flex-col items-center justify-center space-y-6 py-6">
-                                {primarySolanaAddress ? (
+                            
+                            {/* Segmented Network Selector inside Modal */}
+                            <div className="grid grid-cols-2 gap-2 p-1 bg-secondary/30 rounded-xl border border-border/60 mt-2">
+                                <button
+                                    type="button"
+                                    onClick={() => setReceiveNetwork("solana")}
+                                    className={`flex items-center justify-center gap-1.5 py-2 px-3 rounded-lg text-xs font-semibold transition-all ${
+                                        receiveNetwork === "solana"
+                                            ? "bg-primary text-primary-foreground shadow-sm"
+                                            : "text-muted-foreground hover:text-foreground hover:bg-secondary/50"
+                                    }`}
+                                >
+                                    <span className={`w-2 h-2 rounded-full ${receiveNetwork === "solana" ? "bg-white" : "bg-purple-400"}`} />
+                                    <span>Solana</span>
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setReceiveNetwork("arc")}
+                                    className={`flex items-center justify-center gap-1.5 py-2 px-3 rounded-lg text-xs font-semibold transition-all ${
+                                        receiveNetwork === "arc"
+                                            ? "bg-primary text-primary-foreground shadow-sm"
+                                            : "text-muted-foreground hover:text-foreground hover:bg-secondary/50"
+                                    }`}
+                                >
+                                    <span className={`w-2 h-2 rounded-full ${receiveNetwork === "arc" ? "bg-white" : "bg-emerald-400"}`} />
+                                    <span>Arc (Layer-1)</span>
+                                </button>
+                            </div>
+
+                            <div className="flex flex-col items-center justify-center space-y-6 py-4">
+                                {(receiveNetwork === "solana" ? primarySolanaAddress : primaryArcAddress) ? (
                                     <>
                                         <div className="bg-white p-4 rounded-xl shadow-md">
-                                            <QRCodeSVG value={primarySolanaAddress} size={200} />
+                                            <QRCodeSVG
+                                                value={receiveNetwork === "solana" ? primarySolanaAddress! : primaryArcAddress!}
+                                                size={200}
+                                            />
                                         </div>
                                         <div className="text-center space-y-2 w-full">
-                                            <p className="text-sm font-medium text-muted-foreground">{t("buy_usdc.solana_wallet_address")}</p>
+                                            <p className="text-sm font-medium text-muted-foreground">
+                                                {receiveNetwork === "solana" ? "Solana Wallet Address" : "Arc Wallet Address (EVM)"}
+                                            </p>
                                             <div className="flex items-center justify-between gap-2 bg-secondary/50 p-3 rounded-lg w-full border border-border/60">
-                                                <code className="text-xs sm:text-sm break-all text-left flex-1 font-mono">{primarySolanaAddress}</code>
+                                                <code className="text-xs sm:text-sm break-all text-left flex-1 font-mono">
+                                                    {receiveNetwork === "solana" ? primarySolanaAddress : primaryArcAddress}
+                                                </code>
                                                 <button
-                                                    onClick={() => handleCopy(primarySolanaAddress)}
+                                                    onClick={() => handleCopy(receiveNetwork === "solana" ? primarySolanaAddress : primaryArcAddress)}
                                                     className="p-2 hover:bg-secondary rounded-md transition-colors shrink-0"
                                                     title="Copy address"
                                                 >
@@ -323,7 +389,7 @@ const BuyUSDC = () => {
                                     </>
                                 ) : (
                                     <p className="text-center text-muted-foreground">
-                                        {t("buy_usdc.no_solana_wallet")}
+                                        {receiveNetwork === "solana" ? t("buy_usdc.no_solana_wallet") : "No Arc wallet connected."}
                                     </p>
                                 )}
                             </div>

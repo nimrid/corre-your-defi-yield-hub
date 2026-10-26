@@ -48,6 +48,7 @@ if (typeof window !== "undefined" && "serviceWorker" in navigator) {
 import { PrivyProvider } from "@privy-io/react-auth";
 import React from "react";
 import { base, lisk } from "viem/chains";
+import { arc } from "./config/arcChain";
 import { createSolanaRpc, createSolanaRpcSubscriptions } from "@solana/kit";
 
 
@@ -93,7 +94,7 @@ createRoot(document.getElementById("root")!).render(
           },
         },
         defaultChain: base,
-        supportedChains: [base, lisk],
+        supportedChains: [base, lisk, arc],
       }}
     >
       <App />
