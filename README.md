@@ -1,6 +1,5 @@
 # Corre: Decentralized Yield Hub & Capital Markets on Solana 🌐⚡
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Network: Solana](https://img.shields.io/badge/Network-Solana-9945FF?logo=solana&logoColor=white)](https://solana.com)
 [![TypeScript](https://img.shields.io/badge/TypeScript-007ACC?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![React](https://img.shields.io/badge/React-18-61DAFB?logo=react&logoColor=black)](https://react.dev/)
@@ -85,8 +84,8 @@ corre-your-defi-yield-hub/
 
 ### 1. Clone & Install
 ```bash
-git clone https://github.com/nimrid/corre-your-defi-yield-hub.git
-cd corre-your-defi-yield-hub
+git clone https://github.com/nimrid/corre.git
+cd corre
 ```
 
 ### 2. Configure Backend
@@ -113,8 +112,3 @@ npm run dev             # Starts frontend on http://localhost:8080
 * 🛡️ **[Gas Sponsorship Security](GAS_SPONSORSHIP_SECURITY.md)** — Anti-abuse rules, spending ceilings, and transaction rate limits.
 * 🔐 **[Privy Webhook Setup](PRIVY_WEBHOOK_SETUP.md)** — Configuring user lifecycle hooks and Svix signature verification.
 
----
-
-## 📄 License
-
-This project is licensed under the **[MIT License](LICENSE)**.

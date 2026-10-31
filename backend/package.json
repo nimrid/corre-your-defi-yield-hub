@@ -2,7 +2,7 @@
   "name": "corre-backend",
   "version": "1.0.0",
   "private": true,
-  "license": "MIT",
+  "license": "UNLICENSED",
   "type": "module",
   "main": "dist/server.js",
   "scripts": {

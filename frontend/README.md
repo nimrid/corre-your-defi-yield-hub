@@ -203,7 +203,3 @@ npm run preview
 | **`/buy-usdc`** | Fiat Onramp (including African Bank Transfers via Paj Ramp). |
 | **`/send/wallet`** | Direct Solana SPL Token & USDC transfers. |
 
----
-
-## 📄 License
-This module is distributed under the **MIT License**.

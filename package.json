@@ -1,7 +1,8 @@
 {
-  "name": "corre-your-defi-yield-hub",
+  "name": "corre",
+  "private": true,
   "version": "1.0.0",
-  "license": "MIT",
+  "license": "UNLICENSED",
   "dependencies": {
     "@solana/wallet-adapter-base": "^0.9.27",
     "@solana/wallet-adapter-react": "^0.15.39",

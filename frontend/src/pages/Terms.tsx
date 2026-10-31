@@ -120,7 +120,7 @@ const Terms = () => {
                 <h2>PART 5: INTELLECTUAL PROPERTY & OPEN SOURCE</h2>
               </div>
               <p>
-                The Corre Interface design, branding, domain, logos, and custom UI components are owned by Corre Protocol. Underlying open-source smart contract code components are distributed under the MIT License:
+                The Corre Interface design, branding, domain, logos, software, and custom UI components are proprietary and owned by Corre Protocol. All rights reserved:
               </p>
               <div className="p-4 rounded-xl bg-secondary/50 font-mono text-xs text-muted-foreground uppercase space-y-2">
                 <p>THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.</p>
